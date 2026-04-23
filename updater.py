@@ -161,15 +161,28 @@ def perform_self_update_swap(new_exe_tmp: Path) -> None:
     current_exe = Path(sys.executable).resolve()
     tmp_dir = new_exe_tmp.parent
     bat_path = tmp_dir / "invoice-tool-update.bat"
+    log_path = _log_dir() / "update-swap.log"
 
+    # MoTW (Mark of the Web) 除去 + リトライ + ログ出力
     bat_content = (
         "@echo off\r\n"
-        "timeout /t 2 /nobreak >nul\r\n"
-        f'move /Y "{new_exe_tmp}" "{current_exe}" >nul 2>&1\r\n'
+        f'>>"{log_path}" echo [%date% %time%] === update-swap start ===\r\n'
+        f'powershell -NoProfile -Command "Unblock-File -Path \'{new_exe_tmp}\' -ErrorAction SilentlyContinue" >nul 2>&1\r\n'
+        "timeout /t 3 /nobreak >nul\r\n"
+        f'move /Y "{new_exe_tmp}" "{current_exe}" >>"{log_path}" 2>&1\r\n'
         "if errorlevel 1 (\r\n"
-        "  timeout /t 2 /nobreak >nul\r\n"
-        f'  move /Y "{new_exe_tmp}" "{current_exe}" >nul\r\n'
+        f'  >>"{log_path}" echo [retry 1] move failed, wait 3s\r\n'
+        "  timeout /t 3 /nobreak >nul\r\n"
+        f'  move /Y "{new_exe_tmp}" "{current_exe}" >>"{log_path}" 2>&1\r\n'
         ")\r\n"
+        "if errorlevel 1 (\r\n"
+        f'  >>"{log_path}" echo [retry 2] move failed, wait 5s\r\n'
+        "  timeout /t 5 /nobreak >nul\r\n"
+        f'  move /Y "{new_exe_tmp}" "{current_exe}" >>"{log_path}" 2>&1\r\n'
+        ")\r\n"
+        f'powershell -NoProfile -Command "Unblock-File -Path \'{current_exe}\' -ErrorAction SilentlyContinue" >nul 2>&1\r\n'
+        "timeout /t 2 /nobreak >nul\r\n"
+        f'>>"{log_path}" echo [%date% %time%] launching {current_exe}\r\n'
         f'start "" "{current_exe}"\r\n'
         'del "%~f0"\r\n'
     )
