@@ -74,8 +74,7 @@ class App(ctk.CTk):
         # --- シート名 / 振込金額 ---
         frm_info = ctk.CTkFrame(self)
         frm_info.grid(row=3, column=0, padx=24, pady=6, sticky="ew")
-        frm_info.grid_columnconfigure(1, weight=1)
-        frm_info.grid_columnconfigure(3, weight=1)
+        frm_info.grid_columnconfigure(5, weight=1)
 
         import datetime
         _now = datetime.date.today()
