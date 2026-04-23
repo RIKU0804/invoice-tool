@@ -130,15 +130,14 @@ def write_to_template(
         ws.unmerge_cells(str(m))
 
     # 邸数が18超 → 行23の前に extra 行を挿入 + 書式を行22からコピー
+    # その後、元の空白行(スペーサー)を削除して合計行が直下に来るようにする
     if extra > 0:
         ws.insert_rows(23, amount=extra)
-        # 行22の書式を新規行にコピー（塗り・罫線・フォント・数式パターン・幅・高さ）
-        src_row = 22  # 挿入位置の直前の既存行（テンプレ最後の明細行）
-        # insert_rows 後、元の行22 は row 22 のまま（挿入は row 23 の前）
+        src_row = 22
         src_height = ws.row_dimensions[src_row].height
         for new_r in range(23, 23 + extra):
             ws.row_dimensions[new_r].height = src_height
-            for col_idx in range(1, 15):  # A..N
+            for col_idx in range(1, 15):
                 src_cell = ws.cell(row=src_row, column=col_idx)
                 dst_cell = ws.cell(row=new_r, column=col_idx)
                 if src_cell.has_style:
@@ -148,18 +147,27 @@ def write_to_template(
                     dst_cell.number_format = src_cell.number_format
                     dst_cell.alignment = copy(src_cell.alignment)
                     dst_cell.protection = copy(src_cell.protection)
-                # J列: 粗利益式をこの行用に書き直し (後段でdataが書き込まれる)
-                if col_idx == 10:  # J列
+                if col_idx == 10:
                     dst_cell.value = f'=ROUNDDOWN(D{new_r}-E{new_r}-F{new_r}-G{new_r}-H{new_r}-I{new_r},0)'
-                elif col_idx == 12:  # L列 粗利率
+                elif col_idx == 12:
                     dst_cell.value = f'=J{new_r}/D{new_r}'
-        print(f"  [insert] {extra}行追加 ({n_tei}邸対応, 書式コピー済み)")
+        # 元の空白スペーサー行(挿入後は 23+extra)を削除して、余分な空行を解消
+        ws.delete_rows(23 + extra, amount=1)
+        print(f"  [insert] {extra}行追加 + 元スペーサー削除 ({n_tei}邸対応)")
 
-    # 行番号ヘルパー
-    data_last_row = 22 + extra        # 最終明細行
-    sum_row = 24 + extra              # 合計行
-    hancho_row_start = 29 + extra     # 班長集計開始
-    furikomi_start = 37 + extra       # 振込金額照合開始
+    # 行番号ヘルパー（元スペーサー削除で1行詰まる想定）
+    # extra=0: 元のまま(data 5-22, spacer 23, sum 24)
+    # extra>0: data 5-(22+extra), sum (23+extra) ※スペーサー無し
+    data_last_row = 22 + extra
+    if extra > 0:
+        # スペーサー削除後、合計は23+extraに詰まる。以降も-1シフト
+        sum_row = 23 + extra
+        hancho_row_start = 28 + extra
+        furikomi_start = 36 + extra
+    else:
+        sum_row = 24
+        hancho_row_start = 29
+        furikomi_start = 37
 
     # 赤枠再描画
     _draw_red_border(ws, top=29 + extra, bottom=35 + extra, left=2, right=10)
@@ -184,11 +192,21 @@ def write_to_template(
 
     # 付帯数式（原材料経費合計・生産課支払）も行挿入で参照がズレるため書き換え
     # 原テンプレ配置: I25=SUM(E5:I23), E26=SUM(E24:F24)
-    # 行挿入後: I(25+extra), E(26+extra)
-    i_zairyo_row = 25 + extra
-    e_seisanka_row = 26 + extra
+    # extra=0: I25, E26 のまま
+    # extra>0: スペーサー削除で1行詰まるので I(24+extra), E(25+extra)
+    if extra > 0:
+        i_zairyo_row = 24 + extra
+        e_seisanka_row = 25 + extra
+    else:
+        i_zairyo_row = 25
+        e_seisanka_row = 26
     ws[f'I{i_zairyo_row}'] = f'=SUM(E5:I{data_last_row})'
     ws[f'E{e_seisanka_row}'] = f'=SUM(E{sum_row}:F{sum_row})'
+    # 「生産課 支払 "数値」のセルはMeiryo 20なので E+F マージで表示幅を確保
+    try:
+        ws.merge_cells(start_row=e_seisanka_row, start_column=5, end_row=e_seisanka_row, end_column=6)
+    except Exception:
+        pass
 
     # 担当者別集計(SUMIF) - 挿入後の行/範囲
     data_range_J = f"J5:J{data_last_row}"
