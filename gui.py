@@ -26,7 +26,8 @@ ctk.set_default_color_theme("blue")
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("支払通知書 自動抽出ツール")
+        from version import VERSION
+        self.title(f"支払通知書 自動抽出ツール  v{VERSION}")
         self.geometry("560x480")
         self.resizable(False, False)
         self._build_ui()
