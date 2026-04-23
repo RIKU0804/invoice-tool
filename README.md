@@ -37,7 +37,7 @@
 
 ## エンドユーザー向け：使い方
 
-1. `shiharai-tool.exe` をダブルクリック
+1. `invoice-tool.exe` をダブルクリック
 2. 新しいバージョンがある場合は案内が出る（「はい」で自動更新）
 3. 処理完了を待つ
 4. 出力Excelが生成される
@@ -69,8 +69,8 @@ python main.py
 
 ```bash
 pip install pyinstaller
-pyinstaller shiharai-tool.spec
-# → dist/shiharai-tool.exe が生成される
+pyinstaller invoice-tool.spec
+# → dist/invoice-tool.exe が生成される
 ```
 
 ## AIモデルの追加/変更
@@ -124,7 +124,7 @@ pdf_extractor/
 ├── orchestrator.py                # 並列実行 & 結果採用ロジック
 ├── excel_writer.py                # Excel書き込み & 分類ルール
 ├── requirements.txt               # Python依存関係
-├── shiharai-tool.spec             # PyInstaller設定
+├── invoice-tool.spec             # PyInstaller設定
 ├── .github/
 │   └── workflows/
 │       └── build.yml              # GitHub Actions (自動ビルド)

@@ -32,15 +32,15 @@ jobs:
           echo "OPENROUTER_API_KEY = \"${OPENROUTER_API_KEY}\"" > _secret.py
 
       - name: Build EXE
-        run: pyinstaller shiharai-tool.spec
+        run: pyinstaller invoice-tool.spec
 
       - name: Zip dist folder
         shell: pwsh
-        run: Compress-Archive -Path dist\shiharai-tool\* -DestinationPath dist\shiharai-tool.zip
+        run: Compress-Archive -Path dist\invoice-tool\* -DestinationPath dist\invoice-tool.zip
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/shiharai-tool.zip
+          files: dist/invoice-tool.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

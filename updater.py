@@ -19,11 +19,11 @@ RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 
 def _log_dir() -> Path:
-    """ログ出力先: %APPDATA%\\shiharai-tool (Win) or ~/.shiharai-tool"""
+    """ログ出力先: %APPDATA%\\invoice-tool (Win) or ~/.invoice-tool"""
     if os.name == "nt":
-        base = Path(os.environ.get("APPDATA", Path.home())) / "shiharai-tool"
+        base = Path(os.environ.get("APPDATA", Path.home())) / "invoice-tool"
     else:
-        base = Path.home() / ".shiharai-tool"
+        base = Path.home() / ".invoice-tool"
     base.mkdir(parents=True, exist_ok=True)
     return base
 
@@ -61,7 +61,7 @@ def _fetch_latest_release() -> Optional[dict]:
     try:
         req = urllib.request.Request(
             RELEASES_API,
-            headers={"User-Agent": "shiharai-tool", "Accept": "application/vnd.github+json"},
+            headers={"User-Agent": "invoice-tool", "Accept": "application/vnd.github+json"},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())

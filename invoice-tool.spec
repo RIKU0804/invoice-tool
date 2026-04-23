@@ -19,7 +19,7 @@ exe = EXE(
     pyz,
     a.scripts,
     [],
-    name='shiharai-tool',
+    name='invoice-tool',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -42,5 +42,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='shiharai-tool',
+    name='invoice-tool',
 )
