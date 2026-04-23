@@ -259,7 +259,18 @@ def _add_usability_features(ws):
     dv.add('K5:K23')
     ws.add_data_validation(dv)
 
-    # 差額赤/緑
+    # 旧D40ルール（旧差額セル）の除去 + 新D43ルール追加
+    from openpyxl.formatting.formatting import ConditionalFormattingList
+    kept = ConditionalFormattingList()
+    for cf_range, rules in ws.conditional_formatting._cf_rules.items():
+        sqref_str = str(cf_range.sqref).strip()
+        if sqref_str == "D40":
+            continue
+        for rule in rules:
+            kept.add(sqref_str, rule)
+    ws.conditional_formatting = kept
+
+    # 差額赤/緑 (D43)
     red_fill = PatternFill(start_color='FFCCCC', end_color='FFCCCC', fill_type='solid')
     green_fill = PatternFill(start_color='D5F5E3', end_color='D5F5E3', fill_type='solid')
     ws.conditional_formatting.add('D43', FormulaRule(formula=['ABS(D43)>10'], fill=red_fill))
