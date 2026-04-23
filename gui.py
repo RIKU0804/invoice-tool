@@ -76,22 +76,33 @@ class App(ctk.CTk):
         frm_info.grid_columnconfigure(1, weight=1)
         frm_info.grid_columnconfigure(3, weight=1)
 
-        ctk.CTkLabel(frm_info, text="新規シート名", width=110, anchor="w").grid(
+        import datetime
+        _now = datetime.date.today()
+
+        ctk.CTkLabel(frm_info, text="シート名（年月）", width=110, anchor="w").grid(
             row=0, column=0, padx=(16, 8), pady=12
         )
-        self.sheet_var = ctk.StringVar(value="2025年1月")
-        ctk.CTkEntry(frm_info, textvariable=self.sheet_var, width=120).grid(
-            row=0, column=1, padx=(0, 16), pady=12, sticky="w"
+        self.year_var = ctk.StringVar(value=str(_now.year))
+        self.month_var = ctk.StringVar(value=str(_now.month))
+        years = [str(y) for y in range(_now.year - 1, _now.year + 3)]
+        months = [str(m) for m in range(1, 13)]
+        ctk.CTkOptionMenu(frm_info, variable=self.year_var, values=years, width=80).grid(
+            row=0, column=1, padx=(0, 4), pady=12, sticky="w"
         )
+        ctk.CTkLabel(frm_info, text="年", anchor="w").grid(row=0, column=2, padx=(0, 8), pady=12)
+        ctk.CTkOptionMenu(frm_info, variable=self.month_var, values=months, width=64).grid(
+            row=0, column=3, padx=(0, 4), pady=12, sticky="w"
+        )
+        ctk.CTkLabel(frm_info, text="月", anchor="w").grid(row=0, column=4, padx=(0, 8), pady=12)
 
         ctk.CTkLabel(frm_info, text="振込金額（税込）", width=110, anchor="w").grid(
-            row=0, column=2, padx=(0, 8), pady=12
+            row=1, column=0, padx=(16, 8), pady=(0, 12)
         )
         self.furikomi_var = ctk.StringVar()
         ctk.CTkEntry(
             frm_info, textvariable=self.furikomi_var,
-            placeholder_text="空欄でもOK", width=140
-        ).grid(row=0, column=3, padx=(0, 16), pady=12, sticky="w")
+            placeholder_text="空欄でもOK", width=200
+        ).grid(row=1, column=1, columnspan=4, padx=(0, 16), pady=(0, 12), sticky="w")
 
         # --- 処理開始ボタン ---
         self.run_btn = ctk.CTkButton(
@@ -127,16 +138,13 @@ class App(ctk.CTk):
     def _start(self):
         pdf_path = self.pdf_var.get().strip()
         tpl_path = _bundled_template()
-        sheet = self.sheet_var.get().strip()
+        sheet = f"{self.year_var.get()}年{self.month_var.get()}月"
 
         if not pdf_path or not os.path.exists(pdf_path):
             messagebox.showerror("エラー", "PDFファイルを選択してください")
             return
         if not os.path.exists(tpl_path):
             messagebox.showerror("エラー", f"テンプレートが見つかりません:\n{tpl_path}")
-            return
-        if not sheet:
-            messagebox.showerror("エラー", "シート名を入力してください")
             return
 
         furikomi_raw = self.furikomi_var.get().strip().replace(",", "")
