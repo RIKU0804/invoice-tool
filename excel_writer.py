@@ -192,34 +192,34 @@ def write_to_template(
 
 
 def _write_furikomi_verification(ws, furikomi, koujidai, sousai):
-    """振込金額照合欄（税抜⇔税込の二重計算）"""
-    # 既存欄クリア
-    for r in range(34, 42):
+    """振込金額照合欄（税抜⇔税込の二重計算）37〜44行"""
+    # 既存欄クリア（旧位置34-41 と 新位置37-44 両方）
+    for r in range(34, 45):
         for c in range(2, 6):
             ws.cell(r, c).value = None
 
-    ws['B34'] = '【振込金額照合（税抜⇔税込の二重計算）】'
-    ws['B34'].font = copy(ws['C2'].font)
+    ws['B37'] = '【振込金額照合（税抜⇔税込の二重計算）】'
+    ws['B37'].font = copy(ws['C2'].font)
 
-    ws['B35'] = '① 振込金額（税込・実際に振り込まれた額）'
-    ws['D35'] = furikomi if furikomi else None
-    ws['B36'] = '② 税込相殺（PDF・手入力）'
-    ws['D36'] = sousai if sousai else None
-    ws['B37'] = '③ 税込工事代計（① − ②）'
-    ws['D37'] = '=D35-D36'
-    ws['B38'] = '④ 税抜逆算（③ ÷ 1.1）'
-    ws['D38'] = '=ROUND(D37/1.1,0)'
-    ws['B39'] = '⑤ Excel税抜合計（J24）'
-    ws['D39'] = '=J24'
-    ws['B40'] = '⑥ 差額（⑤ − ④）'
-    ws['D40'] = '=D39-D38'
-    ws['B41'] = '※ ±数円→インボイス端数差(正常) / 大きな差→PDF読取エラーの可能性'
+    ws['B38'] = '① 振込金額(税込・実際に振り込まれた額)'
+    ws['D38'] = furikomi if furikomi else None
+    ws['B39'] = '② 税込相殺(PDF・手入力)'
+    ws['D39'] = sousai if sousai else None
+    ws['B40'] = '③ 税込工事代計(① − ②)'
+    ws['D40'] = '=D38-D39'
+    ws['B41'] = '④ 税抜逆算(③ ÷ 1.1)'
+    ws['D41'] = '=ROUND(D40/1.1,0)'
+    ws['B42'] = '⑤ Excel税抜合計(J24)'
+    ws['D42'] = '=J24'
+    ws['B43'] = '⑥ 差額(⑤ − ④)'
+    ws['D43'] = '=D42-D41'
+    ws['B44'] = '※ ±数円→インボイス端数差(正常) / 大きな差→PDF読取エラーの可能性'
 
-    for r in [35, 36, 37, 38, 39, 40]:
+    for r in [38, 39, 40, 41, 42, 43]:
         ws[f'D{r}'].number_format = '#,##0;[Red]▲#,##0'
 
-    ws['B40'].font = Font(name=ws['B35'].font.name, size=11, bold=True)
-    ws['D40'].font = Font(name=ws['D35'].font.name, size=11, bold=True)
+    ws['B43'].font = Font(name=ws['B38'].font.name, size=11, bold=True)
+    ws['D43'].font = Font(name=ws['D38'].font.name, size=11, bold=True)
 
 
 def _add_usability_features(ws):
@@ -239,8 +239,8 @@ def _add_usability_features(ws):
     # 差額赤/緑
     red_fill = PatternFill(start_color='FFCCCC', end_color='FFCCCC', fill_type='solid')
     green_fill = PatternFill(start_color='D5F5E3', end_color='D5F5E3', fill_type='solid')
-    ws.conditional_formatting.add('D40', FormulaRule(formula=['ABS(D40)>10'], fill=red_fill))
-    ws.conditional_formatting.add('D40', FormulaRule(formula=['AND(ABS(D40)<=10,D40<>"")'], fill=green_fill))
+    ws.conditional_formatting.add('D43', FormulaRule(formula=['ABS(D43)>10'], fill=red_fill))
+    ws.conditional_formatting.add('D43', FormulaRule(formula=['AND(ABS(D43)<=10,D43<>"")'], fill=green_fill))
 
     # 班長未入力黄色
     light_yellow = PatternFill(start_color='FFF9E6', end_color='FFF9E6', fill_type='solid')
