@@ -15,6 +15,13 @@ from version import VERSION
 GITHUB_REPO = "RIKU0804/invoice-tool"
 RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
+_update_callback = None  # GUI側からセットされるコールバック(version, url) -> None
+
+
+def set_update_callback(callback):
+    global _update_callback
+    _update_callback = callback
+
 
 def _is_frozen() -> bool:
     return getattr(sys, "frozen", False)
@@ -58,7 +65,15 @@ def run_update_check(silent_if_current: bool = True) -> None:
             print(f"最新バージョンです (v{VERSION})")
         return
 
-    # 新バージョンあり → Tkinterダイアログで通知
+    # 新バージョンあり
+    html_url = release.get("html_url", f"https://github.com/{GITHUB_REPO}/releases")
+
+    # コールバックがあればGUI側に委譲（customtkinter対応）
+    if _update_callback:
+        _update_callback(latest_version, html_url)
+        return
+
+    # フォールバック: tkinter
     try:
         import tkinter as tk
         from tkinter import messagebox
@@ -66,12 +81,13 @@ def run_update_check(silent_if_current: bool = True) -> None:
 
         root = tk.Tk()
         root.withdraw()
-        html_url = release.get("html_url", f"https://github.com/{GITHUB_REPO}/releases")
+        root.attributes("-topmost", True)
         answer = messagebox.askyesno(
             "アップデートのお知らせ",
             f"新しいバージョン {latest_version} が利用可能です。\n"
             f"現在のバージョン: v{VERSION}\n\n"
             "ダウンロードページを開きますか？",
+            parent=root,
         )
         root.destroy()
         if answer:

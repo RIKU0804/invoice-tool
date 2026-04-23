@@ -40,7 +40,21 @@ class App(ctk.CTk):
 
     def _run_update_check(self):
         try:
-            from updater import run_update_check
+            import webbrowser
+            from updater import set_update_callback, run_update_check
+
+            def _on_update(version, url):
+                def _show():
+                    if messagebox.askyesno(
+                        "アップデートのお知らせ",
+                        f"新しいバージョン {version} が利用可能です。\n"
+                        f"現在のバージョン: v{__import__('version').VERSION}\n\n"
+                        "ダウンロードページを開きますか？"
+                    ):
+                        webbrowser.open(url)
+                self.after(0, _show)
+
+            set_update_callback(_on_update)
             run_update_check(silent_if_current=True)
         except Exception:
             pass
