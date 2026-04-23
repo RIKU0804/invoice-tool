@@ -136,6 +136,11 @@ def write_to_template(
     # タイトル書き換え
     new_ws['C2'] = f'{sheet_name}　着工=受注　ベース'
 
+    # C列（工事名称）の赤塗りをクリア
+    no_fill = PatternFill(fill_type=None)
+    for r in range(5, 24):
+        new_ws.cell(row=r, column=3).fill = no_fill
+
     # 明細書き込み（5行目から）
     for i, item in enumerate(aggregated):
         r = 5 + i
