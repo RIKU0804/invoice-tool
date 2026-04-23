@@ -283,8 +283,9 @@ def _add_usability_features(ws):
     ws['N9'] = '合計'
     ws['O9'] = '=SUM(O5:O8)'
     ws.conditional_formatting.add('O8', CellIsRule(operator='greaterThan', formula=['0'], fill=light_yellow))
-    ws.column_dimensions['N'].width = 12
-    ws.column_dimensions['O'].width = 8
-    # 数値列が####にならないよう幅を確保（7桁+カンマ+マージン想定で18）
+    ws.column_dimensions['N'].width = 14
+    ws.column_dimensions['O'].width = 10
+    # 数値列は Meiryo size17 なので1文字あたり約2.6幅単位。
+    # 10桁 (9,999,999,999→実質は「10,933,813」の10文字) まで対応するため28
     for col in ['D', 'E', 'F', 'G', 'H', 'I', 'J']:
-        ws.column_dimensions[col].width = 18
+        ws.column_dimensions[col].width = 28
