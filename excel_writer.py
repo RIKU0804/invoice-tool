@@ -7,8 +7,9 @@ Excel反映モジュール
 
 from typing import Optional
 from openpyxl import load_workbook
-from openpyxl.styles import Font, PatternFill, Border, Side
-from openpyxl.formatting.rule import FormulaRule, CellIsRule
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.styles.differential import DifferentialStyle
+from openpyxl.formatting.rule import FormulaRule, CellIsRule, Rule
 from openpyxl.worksheet.datavalidation import DataValidation
 from copy import copy
 from collections import defaultdict
@@ -265,6 +266,13 @@ def _add_usability_features(ws):
     light_yellow = PatternFill(start_color='FFF9E6', end_color='FFF9E6', fill_type='solid')
     ws.conditional_formatting.add('K5:K23', FormulaRule(formula=['AND(K5="",B5<>"")'], fill=light_yellow))
 
+    # 班長名による配置と色分け（山本=緑左, 熱田=橙中央, 安保=青右）
+    _add_hancho_styling(ws)
+
+    # L5:L23（粗利率）の配置を右揃えに統一（L7だけ中央揃えバグ対応）
+    for r in range(5, 24):
+        ws[f'L{r}'].alignment = Alignment(horizontal='right', vertical='center')
+
     # 担当邸数
     ws['N3'] = '【担当邸数】'
     ws['N3'].font = copy(ws['C2'].font)
@@ -290,3 +298,24 @@ def _add_usability_features(ws):
     # 10桁 (9,999,999,999→実質は「10,933,813」の10文字) まで対応するため28
     for col in ['D', 'E', 'F', 'G', 'H', 'I', 'J']:
         ws.column_dimensions[col].width = 28
+
+
+def _add_hancho_styling(ws):
+    """班長名に応じて配置と色を自動変更する条件付き書式。
+
+    - 山本: 左揃え / 緑 (#006100)
+    - 熱田: 中央揃え / 橙 (#C65911)
+    - 安保: 右揃え / 青 (#2E75B6)
+    """
+    styles = [
+        ("山本", "left", "FF006100"),
+        ("熱田", "center", "FFC65911"),
+        ("安保", "right", "FF2E75B6"),
+    ]
+    for name, halign, color in styles:
+        dxf = DifferentialStyle(
+            font=Font(color=color, bold=True),
+            alignment=Alignment(horizontal=halign, vertical="center"),
+        )
+        rule = Rule(type="cellIs", operator="equal", formula=[f'"{name}"'], dxf=dxf)
+        ws.conditional_formatting.add("K5:K23", rule)
