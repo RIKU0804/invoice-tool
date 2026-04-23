@@ -7,6 +7,7 @@
 
 import sys
 import os
+import json
 import datetime
 import threading
 from pathlib import Path
@@ -14,6 +15,34 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
 from version import VERSION
+
+
+def _settings_path() -> Path:
+    if os.name == "nt":
+        base = Path(os.environ.get("APPDATA", Path.home())) / "invoice-tool"
+    else:
+        base = Path.home() / ".invoice-tool"
+    base.mkdir(parents=True, exist_ok=True)
+    return base / "settings.json"
+
+
+def _load_settings() -> dict:
+    try:
+        p = _settings_path()
+        if p.exists():
+            return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_settings(data: dict) -> None:
+    try:
+        _settings_path().write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception:
+        pass
 
 
 def _bundled_template() -> str:
@@ -29,12 +58,23 @@ ctk.set_default_color_theme("blue")
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
+        self.settings = _load_settings()
         self.title(f"PDF 明細抽出  v{VERSION}")
         self.geometry("560x720")
         self.resizable(False, False)
         self._build_ui()
         self._center_window()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(1000, self._check_update)
+
+    def _on_close(self):
+        self._persist_settings()
+        self.destroy()
+
+    def _persist_settings(self):
+        _save_settings({
+            "out_dir": self.out_dir_var.get().strip(),
+        })
 
     def _check_update(self):
         threading.Thread(target=self._run_update_check, daemon=True).start()
@@ -109,8 +149,12 @@ class App(ctk.CTk):
         ctk.CTkLabel(frm_pdf, text="出力先フォルダ", width=110, anchor="w").grid(
             row=1, column=0, padx=(16, 8), pady=(0, 12)
         )
-        docs = Path.home() / "Documents"
-        default_out = str(docs if docs.is_dir() else Path.home())
+        saved_out = self.settings.get("out_dir", "").strip()
+        if saved_out and Path(saved_out).is_dir():
+            default_out = saved_out
+        else:
+            docs = Path.home() / "Documents"
+            default_out = str(docs if docs.is_dir() else Path.home())
         self.out_dir_var = ctk.StringVar(value=default_out)
         ctk.CTkEntry(frm_pdf, textvariable=self.out_dir_var).grid(
             row=1, column=1, padx=(0, 8), pady=(0, 12), sticky="ew"
@@ -208,6 +252,7 @@ class App(ctk.CTk):
         path = filedialog.askdirectory(title="出力先フォルダを選択")
         if path:
             self.out_dir_var.set(path)
+            self._persist_settings()
 
     # --------------------------------------------------------------- 処理実行
     def _start(self):
