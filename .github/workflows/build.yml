@@ -34,13 +34,9 @@ jobs:
       - name: Build EXE
         run: pyinstaller invoice-tool.spec
 
-      - name: Zip dist folder
-        shell: pwsh
-        run: Compress-Archive -Path dist\invoice-tool\* -DestinationPath dist\invoice-tool.zip
-
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/invoice-tool.zip
+          files: dist/invoice-tool.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
