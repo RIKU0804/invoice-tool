@@ -129,10 +129,31 @@ def write_to_template(
     for m in list(ws.merged_cells.ranges):
         ws.unmerge_cells(str(m))
 
-    # 邸数が18超 → 行23の前に extra 行を挿入
+    # 邸数が18超 → 行23の前に extra 行を挿入 + 書式を行22からコピー
     if extra > 0:
         ws.insert_rows(23, amount=extra)
-        print(f"  [insert] {extra}行追加 ({n_tei}邸対応)")
+        # 行22の書式を新規行にコピー（塗り・罫線・フォント・数式パターン・幅・高さ）
+        src_row = 22  # 挿入位置の直前の既存行（テンプレ最後の明細行）
+        # insert_rows 後、元の行22 は row 22 のまま（挿入は row 23 の前）
+        src_height = ws.row_dimensions[src_row].height
+        for new_r in range(23, 23 + extra):
+            ws.row_dimensions[new_r].height = src_height
+            for col_idx in range(1, 15):  # A..N
+                src_cell = ws.cell(row=src_row, column=col_idx)
+                dst_cell = ws.cell(row=new_r, column=col_idx)
+                if src_cell.has_style:
+                    dst_cell.font = copy(src_cell.font)
+                    dst_cell.border = copy(src_cell.border)
+                    dst_cell.fill = copy(src_cell.fill)
+                    dst_cell.number_format = src_cell.number_format
+                    dst_cell.alignment = copy(src_cell.alignment)
+                    dst_cell.protection = copy(src_cell.protection)
+                # J列: 粗利益式をこの行用に書き直し (後段でdataが書き込まれる)
+                if col_idx == 10:  # J列
+                    dst_cell.value = f'=ROUNDDOWN(D{new_r}-E{new_r}-F{new_r}-G{new_r}-H{new_r}-I{new_r},0)'
+                elif col_idx == 12:  # L列 粗利率
+                    dst_cell.value = f'=J{new_r}/D{new_r}'
+        print(f"  [insert] {extra}行追加 ({n_tei}邸対応, 書式コピー済み)")
 
     # 行番号ヘルパー
     data_last_row = 22 + extra        # 最終明細行
