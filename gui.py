@@ -32,6 +32,18 @@ class App(ctk.CTk):
         self.resizable(False, False)
         self._build_ui()
         self._center_window()
+        self.after(1000, self._check_update)
+
+    def _check_update(self):
+        import threading
+        threading.Thread(target=self._run_update_check, daemon=True).start()
+
+    def _run_update_check(self):
+        try:
+            from updater import run_update_check
+            run_update_check(silent_if_current=True)
+        except Exception:
+            pass
 
     def _center_window(self):
         self.update_idletasks()
