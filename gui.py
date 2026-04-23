@@ -27,7 +27,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         from version import VERSION
-        self.title(f"支払通知書 自動抽出ツール  v{VERSION}")
+        self.title(f"PDF 明細抽出  v{VERSION}")
         self.geometry("560x480")
         self.resizable(False, False)
         self._build_ui()
@@ -46,7 +46,7 @@ class App(ctk.CTk):
 
         # タイトル
         ctk.CTkLabel(
-            self, text="支払通知書 自動抽出ツール",
+            self, text="PDF 明細抽出",
             font=ctk.CTkFont(size=18, weight="bold")
         ).grid(row=0, column=0, pady=(24, 4))
 
