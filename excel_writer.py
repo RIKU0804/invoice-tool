@@ -6,7 +6,7 @@ Excel反映モジュール
 """
 
 from openpyxl import load_workbook
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Border, Side
 from openpyxl.formatting.rule import FormulaRule, CellIsRule
 from openpyxl.worksheet.datavalidation import DataValidation
 from copy import copy
@@ -119,6 +119,19 @@ def write_to_template(
     merges_to_unmerge = [str(m) for m in new_ws.merged_cells.ranges if 'B29:J35' in str(m)]
     for m in merges_to_unmerge:
         new_ws.unmerge_cells(m)
+
+    # unmerge後にB29:J35の外枠(medium border)を再描画
+    medium = Side(style='medium')
+    no_side = Side(style=None)
+    for row in range(29, 36):
+        for col_idx in range(2, 11):  # B=2, J=10
+            cell = new_ws.cell(row=row, column=col_idx)
+            cell.border = Border(
+                left=medium if col_idx == 2 else no_side,
+                right=medium if col_idx == 10 else no_side,
+                top=medium if row == 29 else no_side,
+                bottom=medium if row == 35 else no_side,
+            )
 
     # タイトル書き換え
     new_ws['C2'] = f'{sheet_name}　着工=受注　ベース'
