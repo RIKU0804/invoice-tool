@@ -116,6 +116,15 @@ class App(ctk.CTk):
             placeholder_text="空欄でもOK", width=200
         ).grid(row=1, column=1, columnspan=4, padx=(0, 16), pady=(0, 12), sticky="w")
 
+        ctk.CTkLabel(frm_info, text="税込相殺", width=110, anchor="w").grid(
+            row=2, column=0, padx=(16, 8), pady=(0, 12)
+        )
+        self.sousai_var = ctk.StringVar()
+        ctk.CTkEntry(
+            frm_info, textvariable=self.sousai_var,
+            placeholder_text="例: -15000（空欄で0扱い）", width=200
+        ).grid(row=2, column=1, columnspan=4, padx=(0, 16), pady=(0, 12), sticky="w")
+
         # --- 処理開始ボタン ---
         self.run_btn = ctk.CTkButton(
             self, text="▶  処理開始",
@@ -160,7 +169,10 @@ class App(ctk.CTk):
             return
 
         furikomi_raw = self.furikomi_var.get().strip().replace(",", "")
-        furikomi = int(furikomi_raw) if furikomi_raw.isdigit() else None
+        furikomi = int(furikomi_raw) if furikomi_raw.lstrip("-").isdigit() else None
+
+        sousai_raw = self.sousai_var.get().strip().replace(",", "")
+        sousai = int(sousai_raw) if sousai_raw.lstrip("-").isdigit() else 0
 
         self.run_btn.configure(state="disabled")
         self.progress.start()
@@ -169,11 +181,11 @@ class App(ctk.CTk):
 
         threading.Thread(
             target=self._run_extraction,
-            args=(pdf_path, tpl_path, sheet, furikomi),
+            args=(pdf_path, tpl_path, sheet, furikomi, sousai),
             daemon=True
         ).start()
 
-    def _run_extraction(self, pdf_path, tpl_path, sheet, furikomi):
+    def _run_extraction(self, pdf_path, tpl_path, sheet, furikomi, sousai=0):
         try:
             from config import CONFIG
             from pdf_converter import pdf_to_jpegs
@@ -226,7 +238,7 @@ class App(ctk.CTk):
                 aggregated=aggregated,
                 furikomi_kingaku=furikomi,
                 pdf_koujidai_zeikomi=None,
-                pdf_sousai_zeikomi=None,
+                pdf_sousai_zeikomi=sousai if sousai != 0 else None,
             )
 
             self._log(f"\n✅ 完了: {out_path}")
