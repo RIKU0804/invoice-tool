@@ -5,6 +5,7 @@ Excel反映モジュール
 分類ルール（社保/生産課/材料費）も自動適用する。
 """
 
+from typing import Optional
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Border, Side
 from openpyxl.formatting.rule import FormulaRule, CellIsRule
@@ -107,9 +108,9 @@ def write_to_template(
     output_path: str,
     sheet_name: str,
     aggregated: list[dict],
-    furikomi_kingaku: "int | None" = None,
-    pdf_koujidai_zeikomi: "int | None" = None,
-    pdf_sousai_zeikomi: "int | None" = None,
+    furikomi_kingaku: Optional[int] = None,
+    pdf_koujidai_zeikomi: Optional[int] = None,
+    pdf_sousai_zeikomi: Optional[int] = None,
 ):
     """
     集計用テンプレートに新シートを追加してデータを書き込む。

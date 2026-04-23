@@ -62,22 +62,25 @@ def _parse_row(row: list) -> dict | None:
     try:
         jigyosho, keiyaku_no, tei_mei, koushu, zeinuki, shohizei, zeikomi, bikou = row[:8]
 
-        # 金額のマイナス(▲)を負数に正規化
         zeinuki_val = _parse_amount(zeinuki)
         if zeinuki_val is None:
             return None
 
+        def _s(v):
+            return str(v).strip() if v is not None else ""
+
         return {
-            "事業所": (jigyosho or "").strip(),
-            "契約NO": (keiyaku_no or "").strip(),
-            "邸名": (tei_mei or "").strip(),
-            "工種": (koushu or "").strip(),
+            "事業所": _s(jigyosho),
+            "契約NO": _s(keiyaku_no),
+            "邸名": _s(tei_mei),
+            "工種": _s(koushu),
             "税抜金額": zeinuki_val,
             "消費税": _parse_amount(shohizei) or 0,
             "税込金額": _parse_amount(zeikomi) or 0,
-            "備考": (bikou or "").strip(),
+            "備考": _s(bikou),
         }
-    except (ValueError, IndexError):
+    except Exception as e:
+        print(f"  [pdfplumber] row parse failed: {type(e).__name__}: {e} row={row!r}")
         return None
 
 

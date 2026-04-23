@@ -9,7 +9,9 @@ import sys
 import os
 import json
 import datetime
+import tempfile
 import threading
+import webbrowser
 from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -80,21 +82,12 @@ class App(ctk.CTk):
         threading.Thread(target=self._run_update_check, daemon=True).start()
 
     def _run_update_check(self, manual: bool = False):
-        import webbrowser
         from updater import set_update_callback, run_update_check
 
         def _on_update(kind: str, payload):
             def _show():
                 if kind == "new":
-                    version = payload["version"]
-                    url = payload["url"]
-                    if messagebox.askyesno(
-                        "アップデートのお知らせ",
-                        f"新しいバージョン {version} が利用可能です。\n"
-                        f"現在のバージョン: v{VERSION}\n\n"
-                        "ダウンロードページを開きますか？"
-                    ):
-                        webbrowser.open(url)
+                    self._show_update_dialog(payload["version"], payload["url"])
                 elif kind == "current" and manual:
                     messagebox.showinfo("最新です", str(payload))
                 elif kind == "error" and manual:
@@ -107,6 +100,98 @@ class App(ctk.CTk):
         except Exception as e:
             if manual:
                 self.after(0, lambda: messagebox.showerror("更新確認エラー", str(e)))
+
+    def _show_update_dialog(self, version: str, html_url: str):
+        """3択のアップデートダイアログを表示"""
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("アップデートのお知らせ")
+        dlg.geometry("440x220")
+        dlg.transient(self)
+        dlg.grab_set()
+        dlg.resizable(False, False)
+
+        ctk.CTkLabel(
+            dlg, text=f"新しいバージョン {version} が利用可能です",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(pady=(20, 6))
+        ctk.CTkLabel(
+            dlg, text=f"現在のバージョン: v{VERSION}", text_color="gray"
+        ).pack(pady=(0, 16))
+
+        progress = ctk.CTkProgressBar(dlg, mode="determinate", width=360)
+        progress.set(0)
+        progress.pack(pady=(0, 6))
+        status = ctk.CTkLabel(dlg, text="", font=ctk.CTkFont(size=11))
+        status.pack(pady=(0, 8))
+
+        btn_frm = ctk.CTkFrame(dlg, fg_color="transparent")
+        btn_frm.pack(pady=(4, 12))
+
+        def _do_in_app_update():
+            btn_now.configure(state="disabled")
+            btn_browser.configure(state="disabled")
+            btn_later.configure(state="disabled")
+            status.configure(text="ダウンロード中...")
+            threading.Thread(
+                target=self._run_in_app_update,
+                args=(dlg, progress, status),
+                daemon=True,
+            ).start()
+
+        def _open_browser():
+            webbrowser.open(html_url)
+            dlg.destroy()
+
+        btn_now = ctk.CTkButton(btn_frm, text="今すぐ更新", width=110, command=_do_in_app_update)
+        btn_now.grid(row=0, column=0, padx=6)
+        btn_browser = ctk.CTkButton(btn_frm, text="ブラウザで開く", width=110, command=_open_browser)
+        btn_browser.grid(row=0, column=1, padx=6)
+        btn_later = ctk.CTkButton(
+            btn_frm, text="後で", width=80, fg_color="gray", command=dlg.destroy
+        )
+        btn_later.grid(row=0, column=2, padx=6)
+
+        # frozenでない環境では「今すぐ更新」無効化
+        if not getattr(sys, "frozen", False):
+            btn_now.configure(state="disabled")
+            status.configure(text="(開発環境では自動更新不可)")
+
+    def _run_in_app_update(self, dlg, progress, status):
+        """バックグラウンドでexeをDL→差し替えbat起動→終了"""
+        from updater import get_latest_exe_asset, download_exe, perform_self_update_swap
+
+        def _update_progress(dl: int, total: int):
+            if total <= 0:
+                return
+            ratio = dl / total
+            text = f"ダウンロード中... {dl // 1024}KB / {total // 1024}KB"
+            def _apply():
+                progress.set(ratio)
+                status.configure(text=text)
+            self.after(0, _apply)
+
+        try:
+            asset = get_latest_exe_asset()
+            if not asset or not asset.get("url"):
+                raise RuntimeError("最新exeのURLが取得できませんでした")
+
+            tmp_dir = Path(tempfile.gettempdir())
+            new_exe = tmp_dir / f"invoice-tool-new-{asset['version']}.exe"
+
+            ok = download_exe(asset["url"], new_exe, progress_cb=_update_progress)
+            if not ok:
+                raise RuntimeError("ダウンロードに失敗しました")
+
+            self.after(0, lambda: status.configure(text="再起動して更新を適用します..."))
+            self.after(300, lambda: perform_self_update_swap(new_exe))
+        except Exception as e:
+            err_msg = str(e)
+            self.after(0, lambda: status.configure(text=f"失敗: {err_msg}"))
+            self.after(0, lambda: messagebox.showerror(
+                "更新に失敗しました",
+                f"{err_msg}\n\n手動でGitHubからダウンロードしてください。",
+                parent=dlg,
+            ))
 
     def _center_window(self):
         self.update_idletasks()
@@ -301,6 +386,12 @@ class App(ctk.CTk):
             from pdf_converter import pdf_to_jpegs, cleanup_temp_jpegs
             from orchestrator import run_parallel_extraction, select_final_result
             from excel_writer import classify_and_aggregate, write_to_template
+
+            if not CONFIG.get("openrouter_api_key"):
+                raise RuntimeError(
+                    "OpenRouter APIキーが設定されていません。\n"
+                    "環境変数 OPENROUTER_API_KEY または .env ファイルを確認してください。"
+                )
 
             out_path = Path(out_dir) / f"集計用_{sheet}_自動反映.xlsx"
 
