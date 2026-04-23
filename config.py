@@ -70,7 +70,7 @@ CONFIG = {
     "input_pdf": "input/支払通知書.pdf",
     "template_xlsx": "template/集計用.xlsx",
     "output_xlsx": "output/集計用_自動反映.xlsx",
-    "image_temp_dir": "temp_images",
+    "image_temp_dir": os.path.join(os.getenv("APPDATA", os.path.expanduser("~")), "shiharai-tool", "temp"),
     "sheet_name": "2025年1月",  # 新規作成するシート名
 
     # ===== 分類ルール（プロンプトに埋め込まれる）=====

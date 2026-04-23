@@ -137,7 +137,7 @@ def write_to_template(
         new_ws.cell(row=r, column=6, value=item["F"] if item["F"] else None)
         # G列: マイナス絶対値の加算式
         if item["G_items"]:
-            g_formula = '=' + '+'.join(str(x) for x in item["G_items"]) if len(item["G_items"]) > 1 else item["G_items"][0]
+            g_formula = '=' + '+'.join(str(x) for x in item["G_items"])
             new_ws.cell(row=r, column=7, value=g_formula)
         else:
             new_ws.cell(row=r, column=7, value=None)
