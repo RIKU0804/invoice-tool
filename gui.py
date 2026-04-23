@@ -7,10 +7,13 @@
 
 import sys
 import os
+import datetime
 import threading
 from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
+
+from version import VERSION
 
 
 def _bundled_template() -> str:
@@ -26,7 +29,6 @@ ctk.set_default_color_theme("blue")
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        from version import VERSION
         self.title(f"PDF 明細抽出  v{VERSION}")
         self.geometry("560x600")
         self.resizable(False, False)
@@ -35,35 +37,31 @@ class App(ctk.CTk):
         self.after(1000, self._check_update)
 
     def _check_update(self):
-        import threading
         threading.Thread(target=self._run_update_check, daemon=True).start()
 
     def _run_update_check(self, manual: bool = False):
+        import webbrowser
+        from updater import set_update_callback, run_update_check
+
+        def _on_update(kind: str, payload):
+            def _show():
+                if kind == "new":
+                    version = payload["version"]
+                    url = payload["url"]
+                    if messagebox.askyesno(
+                        "アップデートのお知らせ",
+                        f"新しいバージョン {version} が利用可能です。\n"
+                        f"現在のバージョン: v{VERSION}\n\n"
+                        "ダウンロードページを開きますか？"
+                    ):
+                        webbrowser.open(url)
+                elif kind == "current" and manual:
+                    messagebox.showinfo("最新です", str(payload))
+                elif kind == "error" and manual:
+                    messagebox.showerror("更新確認エラー", str(payload))
+            self.after(0, _show)
+
         try:
-            import webbrowser
-            from updater import set_update_callback, run_update_check
-
-            def _on_update(kind, payload):
-                def _show():
-                    if kind == "error":
-                        if manual:
-                            messagebox.showerror("更新確認エラー", str(payload))
-                    elif kind == "current":
-                        if manual:
-                            messagebox.showinfo("最新です", str(payload))
-                    else:
-                        # kind = version string, payload = url
-                        version = kind
-                        url = payload
-                        if messagebox.askyesno(
-                            "アップデートのお知らせ",
-                            f"新しいバージョン {version} が利用可能です。\n"
-                            f"現在のバージョン: v{__import__('version').VERSION}\n\n"
-                            "ダウンロードページを開きますか？"
-                        ):
-                            webbrowser.open(url)
-                self.after(0, _show)
-
             set_update_callback(_on_update)
             run_update_check(silent_if_current=not manual, force=manual)
         except Exception as e:
@@ -111,7 +109,8 @@ class App(ctk.CTk):
         ctk.CTkLabel(frm_pdf, text="出力先フォルダ", width=110, anchor="w").grid(
             row=1, column=0, padx=(16, 8), pady=(0, 12)
         )
-        default_out = str(Path.home() / "Documents")
+        docs = Path.home() / "Documents"
+        default_out = str(docs if docs.is_dir() else Path.home())
         self.out_dir_var = ctk.StringVar(value=default_out)
         ctk.CTkEntry(frm_pdf, textvariable=self.out_dir_var).grid(
             row=1, column=1, padx=(0, 8), pady=(0, 12), sticky="ew"
@@ -125,7 +124,6 @@ class App(ctk.CTk):
         frm_info.grid(row=3, column=0, padx=24, pady=6, sticky="ew")
         frm_info.grid_columnconfigure(5, weight=1)
 
-        import datetime
         _now = datetime.date.today()
 
         ctk.CTkLabel(frm_info, text="シート名（年月）", width=110, anchor="w").grid(
@@ -184,12 +182,11 @@ class App(ctk.CTk):
         self.log_box.grid(row=6, column=0, padx=24, pady=(0, 6), sticky="ew")
 
         # --- 更新確認ボタン ---
-        from version import VERSION as _V
         frm_bottom = ctk.CTkFrame(self, fg_color="transparent")
         frm_bottom.grid(row=7, column=0, padx=24, pady=(0, 12), sticky="ew")
         frm_bottom.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
-            frm_bottom, text=f"v{_V}", text_color="gray", font=ctk.CTkFont(size=11)
+            frm_bottom, text=f"v{VERSION}", text_color="gray", font=ctk.CTkFont(size=11)
         ).grid(row=0, column=0, sticky="w")
         ctk.CTkButton(
             frm_bottom, text="更新を確認", width=100, height=28,
@@ -230,10 +227,16 @@ class App(ctk.CTk):
             return
 
         furikomi_raw = self.furikomi_var.get().strip().replace(",", "")
-        furikomi = int(furikomi_raw) if furikomi_raw.lstrip("-").isdigit() else None
+        if furikomi_raw and not furikomi_raw.lstrip("-").isdigit():
+            messagebox.showerror("入力エラー", f"振込金額は半角数字で入力してください: {furikomi_raw}")
+            return
+        furikomi = int(furikomi_raw) if furikomi_raw else None
 
         sousai_raw = self.sousai_var.get().strip().replace(",", "")
-        sousai = int(sousai_raw) if sousai_raw.lstrip("-").isdigit() else 0
+        if sousai_raw and not sousai_raw.lstrip("-").isdigit():
+            messagebox.showerror("入力エラー", f"税込相殺は半角数字で入力してください: {sousai_raw}")
+            return
+        sousai = int(sousai_raw) if sousai_raw else 0
 
         self.run_btn.configure(state="disabled")
         self.progress.start()
@@ -246,15 +249,14 @@ class App(ctk.CTk):
             daemon=True
         ).start()
 
-    def _run_extraction(self, pdf_path, tpl_path, sheet, furikomi, sousai=0, out_dir=None):
+    def _run_extraction(self, pdf_path: str, tpl_path: str, sheet: str, furikomi, sousai: int, out_dir: str):
         try:
             from config import CONFIG
             from pdf_converter import pdf_to_jpegs
             from orchestrator import run_parallel_extraction, select_final_result
             from excel_writer import classify_and_aggregate, write_to_template
 
-            out_base = Path(out_dir) if out_dir else Path(tpl_path).parent
-            out_path = out_base / f"集計用_{sheet}_自動反映.xlsx"
+            out_path = Path(out_dir) / f"集計用_{sheet}_自動反映.xlsx"
 
             self._log(f"[Step 1] PDF → JPEG 変換 (DPI={CONFIG['image_dpi']})")
             image_paths = pdf_to_jpegs(
