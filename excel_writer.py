@@ -243,3 +243,6 @@ def _add_usability_features(ws):
     ws.conditional_formatting.add('O8', CellIsRule(operator='greaterThan', formula=['0'], fill=light_yellow))
     ws.column_dimensions['N'].width = 12
     ws.column_dimensions['O'].width = 8
+    # 数値列が####にならないよう幅を確保
+    for col in ['D', 'E', 'F', 'G', 'H', 'I', 'J']:
+        ws.column_dimensions[col].width = 14
