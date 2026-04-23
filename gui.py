@@ -19,7 +19,7 @@ def _bundled_template() -> str:
         return os.path.join(sys._MEIPASS, "template", "集計用.xlsx")
     return os.path.join(os.path.dirname(__file__), "template", "集計用.xlsx")
 
-ctk.set_appearance_mode("dark")
+ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
 
