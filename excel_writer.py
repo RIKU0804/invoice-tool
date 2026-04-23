@@ -169,15 +169,22 @@ def write_to_template(
         hancho_row_start = 29
         furikomi_start = 37
 
-    # 赤枠再描画
-    _draw_red_border(ws, top=29 + extra, bottom=35 + extra, left=2, right=10)
+    # 赤枠再描画（スペーサー削除で1行詰まる）
+    if extra > 0:
+        red_top = 28 + extra
+        red_bottom = 34 + extra
+    else:
+        red_top = 29
+        red_bottom = 35
+    _draw_red_border(ws, top=red_top, bottom=red_bottom, left=2, right=10)
 
     # タイトル
     ws['C2'] = f'{sheet_name}　着工=受注　ベース'
 
-    # 旧レイアウトの注釈セル(K27:L27)をクリア（挿入考慮）
-    ws.cell(row=27 + extra, column=11).value = None
-    ws.cell(row=27 + extra, column=12).value = None
+    # 旧レイアウトの注釈セル(K27:L27)をクリア（挿入+スペーサー削除でシフト）
+    note_row = (26 + extra) if extra > 0 else 27
+    ws.cell(row=note_row, column=11).value = None
+    ws.cell(row=note_row, column=12).value = None
 
     # C列赤塗りクリア（全データ行）
     no_fill = PatternFill(fill_type=None)
