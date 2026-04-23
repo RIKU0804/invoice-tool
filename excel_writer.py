@@ -276,11 +276,10 @@ def _write_rows(ws, aggregated: list[dict], data_last_row: int):
         ws[f'I{r}'].value = None
         ws[f'K{r}'].value = None
 
-    # 余った行をクリア
+    # 余った行をクリア（A列の行番号 + B-L列すべて）
     n = len(aggregated)
-    for i in range(n, data_last_row - 4):
-        r = 5 + i
-        for col in range(2, 13):
+    for r in range(5 + n, data_last_row + 1):
+        for col in range(1, 13):  # A..L
             ws.cell(row=r, column=col).value = None
 
 
