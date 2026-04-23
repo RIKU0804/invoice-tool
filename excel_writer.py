@@ -39,8 +39,8 @@ def classify_and_aggregate(rows: list[dict]) -> list[dict]:
         koushu = row["工種"]
         bikou = row.get("備考", "")
 
-        # 集計行や退職年金掛金などはスキップ
-        if not tei or tei in ("計", "合計"):
+        # 集計行・特殊行はスキップ
+        if not tei or tei in ("計", "合計") or "消費税" in tei or "対象外" in tei:
             continue
 
         agg = by_tei[tei]

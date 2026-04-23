@@ -48,9 +48,9 @@ CONFIG = {
     # 1個 → 単体モード
     # 2個以上 → クロスチェックモード（並列実行、結果を突き合わせ）
     "models": [
-        "anthropic/claude-opus-4.6",
-        # "google/gemini-3.1-pro-preview",     # コメント外せば2個になる
-        # "openai/gpt-5.4",                     # コメント外せば3個になる
+        "anthropic/claude-sonnet-4-5",
+        # "anthropic/claude-opus-4.6",          # 高精度・高コスト（18/18）
+        # "anthropic/claude-haiku-4-5",         # 低コスト・精度低（3/18）
     ],
 
     # ===== 並列実行の設定 =====
