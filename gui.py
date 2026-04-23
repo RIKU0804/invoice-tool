@@ -393,7 +393,7 @@ class App(ctk.CTk):
                     "環境変数 OPENROUTER_API_KEY または .env ファイルを確認してください。"
                 )
 
-            out_path = Path(out_dir) / f"集計用_{sheet}_自動反映.xlsx"
+            out_path = Path(out_dir) / f"集計用_{sheet}.xlsx"
 
             self._log(f"[Step 1] PDF → JPEG 変換 (DPI={CONFIG['image_dpi']})")
             image_paths = pdf_to_jpegs(
