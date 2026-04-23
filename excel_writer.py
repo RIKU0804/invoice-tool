@@ -120,8 +120,10 @@ def write_to_template(
     for m in merges_to_unmerge:
         new_ws.unmerge_cells(m)
 
-    # unmerge後にB29:J35の外枠(赤)を再描画。内側セルの既存罫線は保持
+    # unmerge後にB29:J35の外枠(赤)を再描画。
+    # 外周セルは「外側に面するエッジだけ赤」「それ以外のエッジはクリア」にしてB29単独の小さな枠が残らないようにする
     red_side = Side(style='medium', color='FFC00000')
+    no_side = Side(style=None)
     for row in range(29, 36):
         for col_idx in range(2, 11):  # B=2, J=10
             is_top = row == 29
@@ -129,14 +131,12 @@ def write_to_template(
             is_left = col_idx == 2
             is_right = col_idx == 10
             if not (is_top or is_bottom or is_left or is_right):
-                continue  # 内側はスキップ（既存罫線を保持）
-            cell = new_ws.cell(row=row, column=col_idx)
-            existing = cell.border
-            cell.border = Border(
-                left=red_side if is_left else existing.left,
-                right=red_side if is_right else existing.right,
-                top=red_side if is_top else existing.top,
-                bottom=red_side if is_bottom else existing.bottom,
+                continue  # 内側セルはノータッチ
+            new_ws.cell(row=row, column=col_idx).border = Border(
+                left=red_side if is_left else no_side,
+                right=red_side if is_right else no_side,
+                top=red_side if is_top else no_side,
+                bottom=red_side if is_bottom else no_side,
             )
 
     # タイトル書き換え
