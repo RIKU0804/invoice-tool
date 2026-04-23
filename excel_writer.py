@@ -126,10 +126,9 @@ def write_to_template(
 
     wb = load_workbook(template_path)
 
-    # コピー元シートを決める（最新の月次シートをベースに）
-    src_sheet_name = wb.sheetnames[0]
-    src = wb[src_sheet_name]
-    new_ws = wb.copy_worksheet(src)
+    # テンプレートシートを直接使用してそのままリネーム
+    # （以前は copy_worksheet で複製していたが、出力に余計なシートが残るので廃止）
+    new_ws = wb[wb.sheetnames[0]]
     new_ws.title = sheet_name
 
     # 巨大マージセルがあれば解除（以前確認済みの挙動）
