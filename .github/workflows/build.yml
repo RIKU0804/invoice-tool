@@ -34,9 +34,13 @@ jobs:
       - name: Build EXE
         run: pyinstaller shiharai-tool.spec
 
+      - name: Zip dist folder
+        shell: pwsh
+        run: Compress-Archive -Path dist\shiharai-tool\* -DestinationPath dist\shiharai-tool.zip
+
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/shiharai-tool.exe
+          files: dist/shiharai-tool.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
