@@ -1,0 +1,18 @@
+# APIキー（絶対にコミットしない）
+_secret.py
+.env
+
+# PyInstaller
+dist/
+build/
+*.spec.bak
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 一時ファイル
+temp_images/
+output/
+*.log
