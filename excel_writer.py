@@ -158,6 +158,10 @@ def write_to_template(
     # タイトル書き換え
     new_ws['C2'] = f'{sheet_name}　着工=受注　ベース'
 
+    # 旧レイアウトの注釈セルをクリア（K27:L27 「差額 ※インボイス端数差」）
+    new_ws['K27'].value = None
+    new_ws['L27'].value = None
+
     # C列（工事名称）の赤塗りをクリア
     no_fill = PatternFill(fill_type=None)
     for r in range(5, 24):
