@@ -27,15 +27,25 @@ def _is_frozen() -> bool:
     return getattr(sys, "frozen", False)
 
 
+_last_error: str | None = None
+
+
+def get_last_error() -> str | None:
+    return _last_error
+
+
 def _fetch_latest_release() -> dict | None:
+    global _last_error
     try:
         req = urllib.request.Request(
             RELEASES_API,
             headers={"User-Agent": "shiharai-tool", "Accept": "application/vnd.github+json"},
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            _last_error = None
             return json.loads(resp.read())
-    except Exception:
+    except Exception as e:
+        _last_error = f"{type(e).__name__}: {e}"
         return None
 
 
@@ -48,12 +58,15 @@ def _compare_versions(current: str, latest: str) -> bool:
         return False
 
 
-def run_update_check(silent_if_current: bool = True) -> None:
-    if not _is_frozen():
-        return  # 開発環境では無視
+def run_update_check(silent_if_current: bool = True, force: bool = False) -> None:
+    # force=Trueなら開発環境でも実行
+    if not force and not _is_frozen():
+        return
 
     release = _fetch_latest_release()
     if not release:
+        if _update_callback and not silent_if_current:
+            _update_callback("error", f"更新確認に失敗: {_last_error or 'unknown'}")
         return
 
     latest_version = release.get("tag_name", "")
@@ -62,7 +75,10 @@ def run_update_check(silent_if_current: bool = True) -> None:
 
     if not _compare_versions(VERSION, latest_version):
         if not silent_if_current:
-            print(f"最新バージョンです (v{VERSION})")
+            if _update_callback:
+                _update_callback("current", f"最新バージョンです (v{VERSION})")
+            else:
+                print(f"最新バージョンです (v{VERSION})")
         return
 
     # 新バージョンあり

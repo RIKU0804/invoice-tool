@@ -28,7 +28,7 @@ class App(ctk.CTk):
         super().__init__()
         from version import VERSION
         self.title(f"PDF 明細抽出  v{VERSION}")
-        self.geometry("560x480")
+        self.geometry("560x600")
         self.resizable(False, False)
         self._build_ui()
         self._center_window()
@@ -38,30 +38,41 @@ class App(ctk.CTk):
         import threading
         threading.Thread(target=self._run_update_check, daemon=True).start()
 
-    def _run_update_check(self):
+    def _run_update_check(self, manual: bool = False):
         try:
             import webbrowser
             from updater import set_update_callback, run_update_check
 
-            def _on_update(version, url):
+            def _on_update(kind, payload):
                 def _show():
-                    if messagebox.askyesno(
-                        "アップデートのお知らせ",
-                        f"新しいバージョン {version} が利用可能です。\n"
-                        f"現在のバージョン: v{__import__('version').VERSION}\n\n"
-                        "ダウンロードページを開きますか？"
-                    ):
-                        webbrowser.open(url)
+                    if kind == "error":
+                        if manual:
+                            messagebox.showerror("更新確認エラー", str(payload))
+                    elif kind == "current":
+                        if manual:
+                            messagebox.showinfo("最新です", str(payload))
+                    else:
+                        # kind = version string, payload = url
+                        version = kind
+                        url = payload
+                        if messagebox.askyesno(
+                            "アップデートのお知らせ",
+                            f"新しいバージョン {version} が利用可能です。\n"
+                            f"現在のバージョン: v{__import__('version').VERSION}\n\n"
+                            "ダウンロードページを開きますか？"
+                        ):
+                            webbrowser.open(url)
                 self.after(0, _show)
 
             set_update_callback(_on_update)
-            run_update_check(silent_if_current=True)
-        except Exception:
-            pass
+            run_update_check(silent_if_current=not manual, force=manual)
+        except Exception as e:
+            if manual:
+                self.after(0, lambda: messagebox.showerror("更新確認エラー", str(e)))
 
     def _center_window(self):
         self.update_idletasks()
-        w, h = 560, 480
+        w, h = 560, 600
         x = (self.winfo_screenwidth() - w) // 2
         y = (self.winfo_screenheight() - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
@@ -95,6 +106,18 @@ class App(ctk.CTk):
         )
         ctk.CTkButton(frm_pdf, text="参照", width=60, command=self._browse_pdf).grid(
             row=0, column=2, padx=(0, 12), pady=12
+        )
+
+        ctk.CTkLabel(frm_pdf, text="出力先フォルダ", width=110, anchor="w").grid(
+            row=1, column=0, padx=(16, 8), pady=(0, 12)
+        )
+        default_out = str(Path.home() / "Documents")
+        self.out_dir_var = ctk.StringVar(value=default_out)
+        ctk.CTkEntry(frm_pdf, textvariable=self.out_dir_var).grid(
+            row=1, column=1, padx=(0, 8), pady=(0, 12), sticky="ew"
+        )
+        ctk.CTkButton(frm_pdf, text="参照", width=60, command=self._browse_out_dir).grid(
+            row=1, column=2, padx=(0, 12), pady=(0, 12)
         )
 
         # --- シート名 / 振込金額 ---
@@ -158,7 +181,22 @@ class App(ctk.CTk):
             self, height=180, font=ctk.CTkFont(family="Consolas", size=11),
             state="disabled", wrap="word"
         )
-        self.log_box.grid(row=6, column=0, padx=24, pady=(0, 20), sticky="ew")
+        self.log_box.grid(row=6, column=0, padx=24, pady=(0, 6), sticky="ew")
+
+        # --- 更新確認ボタン ---
+        from version import VERSION as _V
+        frm_bottom = ctk.CTkFrame(self, fg_color="transparent")
+        frm_bottom.grid(row=7, column=0, padx=24, pady=(0, 12), sticky="ew")
+        frm_bottom.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            frm_bottom, text=f"v{_V}", text_color="gray", font=ctk.CTkFont(size=11)
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkButton(
+            frm_bottom, text="更新を確認", width=100, height=28,
+            command=lambda: threading.Thread(
+                target=self._run_update_check, args=(True,), daemon=True
+            ).start()
+        ).grid(row=0, column=1, sticky="e")
 
     # --------------------------------------------------------------- ファイル選択
     def _browse_pdf(self):
@@ -169,17 +207,26 @@ class App(ctk.CTk):
         if path:
             self.pdf_var.set(path)
 
+    def _browse_out_dir(self):
+        path = filedialog.askdirectory(title="出力先フォルダを選択")
+        if path:
+            self.out_dir_var.set(path)
+
     # --------------------------------------------------------------- 処理実行
     def _start(self):
         pdf_path = self.pdf_var.get().strip()
         tpl_path = _bundled_template()
         sheet = f"{self.year_var.get()}年{self.month_var.get()}月"
+        out_dir = self.out_dir_var.get().strip()
 
         if not pdf_path or not os.path.exists(pdf_path):
             messagebox.showerror("エラー", "PDFファイルを選択してください")
             return
         if not os.path.exists(tpl_path):
             messagebox.showerror("エラー", f"テンプレートが見つかりません:\n{tpl_path}")
+            return
+        if not out_dir or not os.path.isdir(out_dir):
+            messagebox.showerror("エラー", "出力先フォルダを選択してください")
             return
 
         furikomi_raw = self.furikomi_var.get().strip().replace(",", "")
@@ -195,19 +242,19 @@ class App(ctk.CTk):
 
         threading.Thread(
             target=self._run_extraction,
-            args=(pdf_path, tpl_path, sheet, furikomi, sousai),
+            args=(pdf_path, tpl_path, sheet, furikomi, sousai, out_dir),
             daemon=True
         ).start()
 
-    def _run_extraction(self, pdf_path, tpl_path, sheet, furikomi, sousai=0):
+    def _run_extraction(self, pdf_path, tpl_path, sheet, furikomi, sousai=0, out_dir=None):
         try:
             from config import CONFIG
             from pdf_converter import pdf_to_jpegs
             from orchestrator import run_parallel_extraction, select_final_result
             from excel_writer import classify_and_aggregate, write_to_template
 
-            out_dir = Path(tpl_path).parent
-            out_path = out_dir / f"集計用_{sheet}_自動反映.xlsx"
+            out_base = Path(out_dir) if out_dir else Path(tpl_path).parent
+            out_path = out_base / f"集計用_{sheet}_自動反映.xlsx"
 
             self._log(f"[Step 1] PDF → JPEG 変換 (DPI={CONFIG['image_dpi']})")
             image_paths = pdf_to_jpegs(
