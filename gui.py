@@ -444,6 +444,20 @@ class App(ctk.CTk):
             self._log(f"\n✅ 完了: {out_path}")
             self.after(0, lambda: self._on_success(str(out_path)))
 
+        except PermissionError as e:
+            # 出力ファイルがExcelで開きっぱなしの典型パターン
+            err_path = getattr(e, "filename", "") or ""
+            friendly = (
+                "出力ファイルに書き込めません。\n\n"
+                f"ファイル: {err_path}\n\n"
+                "同じファイル名のExcelを開いているとロックされます。\n"
+                "以下を確認してください:\n"
+                "  ① 前回の出力Excelを閉じる（Excelのタスクバー確認）\n"
+                "  ② OneDrive同期中なら少し待ってから再実行\n"
+                "  ③ 出力先フォルダに書き込み権限があるか"
+            )
+            self._log(f"\n❌ ファイルが開かれています: {err_path}")
+            self.after(0, lambda: self._on_permission_error(friendly))
         except Exception as e:
             self._log(f"\n❌ エラー: {e}")
             self.after(0, self._on_error)
@@ -467,6 +481,12 @@ class App(ctk.CTk):
         self.progress.set(0)
         self.run_btn.configure(state="normal")
         messagebox.showerror("エラー", "処理に失敗しました。ログを確認してください。")
+
+    def _on_permission_error(self, msg: str):
+        self.progress.stop()
+        self.progress.set(0)
+        self.run_btn.configure(state="normal")
+        messagebox.showerror("ファイルが開かれています", msg)
 
     # --------------------------------------------------------------- ログ
     def _log(self, msg: str):
