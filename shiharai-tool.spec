@@ -4,7 +4,7 @@ a = Analysis(
     ['gui.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('template/集計用.xlsx', 'template')],
     hiddenimports=['pdfplumber', 'PIL', 'fitz'],
     hookspath=[],
     hooksconfig={},

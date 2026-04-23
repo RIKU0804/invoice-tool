@@ -12,6 +12,13 @@ from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
+
+def _bundled_template() -> str:
+    """PyInstaller同梱テンプレートのパスを返す（開発時はローカルパス）"""
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, "template", "集計用.xlsx")
+    return os.path.join(os.path.dirname(__file__), "template", "集計用.xlsx")
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
@@ -20,14 +27,14 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("支払通知書 自動抽出ツール")
-        self.geometry("560x540")
+        self.geometry("560x480")
         self.resizable(False, False)
         self._build_ui()
         self._center_window()
 
     def _center_window(self):
         self.update_idletasks()
-        w, h = 560, 540
+        w, h = 560, 480
         x = (self.winfo_screenwidth() - w) // 2
         y = (self.winfo_screenheight() - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
@@ -63,25 +70,9 @@ class App(ctk.CTk):
             row=0, column=2, padx=(0, 12), pady=12
         )
 
-        # --- テンプレートExcel選択 ---
-        frm_tpl = ctk.CTkFrame(self)
-        frm_tpl.grid(row=3, column=0, padx=24, pady=6, sticky="ew")
-        frm_tpl.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(frm_tpl, text="テンプレートExcel", width=110, anchor="w").grid(
-            row=0, column=0, padx=(16, 8), pady=12
-        )
-        self.tpl_var = ctk.StringVar()
-        ctk.CTkEntry(frm_tpl, textvariable=self.tpl_var, placeholder_text="集計用.xlsx を選択…").grid(
-            row=0, column=1, padx=(0, 8), pady=12, sticky="ew"
-        )
-        ctk.CTkButton(frm_tpl, text="参照", width=60, command=self._browse_tpl).grid(
-            row=0, column=2, padx=(0, 12), pady=12
-        )
-
         # --- シート名 / 振込金額 ---
         frm_info = ctk.CTkFrame(self)
-        frm_info.grid(row=4, column=0, padx=24, pady=6, sticky="ew")
+        frm_info.grid(row=3, column=0, padx=24, pady=6, sticky="ew")
         frm_info.grid_columnconfigure(1, weight=1)
         frm_info.grid_columnconfigure(3, weight=1)
 
@@ -109,11 +100,11 @@ class App(ctk.CTk):
             height=44, corner_radius=10,
             command=self._start
         )
-        self.run_btn.grid(row=5, column=0, padx=24, pady=(12, 6), sticky="ew")
+        self.run_btn.grid(row=4, column=0, padx=24, pady=(12, 6), sticky="ew")
 
         # --- 進捗バー ---
         self.progress = ctk.CTkProgressBar(self, mode="indeterminate")
-        self.progress.grid(row=6, column=0, padx=24, pady=(0, 8), sticky="ew")
+        self.progress.grid(row=5, column=0, padx=24, pady=(0, 8), sticky="ew")
         self.progress.set(0)
 
         # --- ログ ---
@@ -121,7 +112,7 @@ class App(ctk.CTk):
             self, height=180, font=ctk.CTkFont(family="Consolas", size=11),
             state="disabled", wrap="word"
         )
-        self.log_box.grid(row=7, column=0, padx=24, pady=(0, 20), sticky="ew")
+        self.log_box.grid(row=6, column=0, padx=24, pady=(0, 20), sticky="ew")
 
     # --------------------------------------------------------------- ファイル選択
     def _browse_pdf(self):
@@ -132,25 +123,17 @@ class App(ctk.CTk):
         if path:
             self.pdf_var.set(path)
 
-    def _browse_tpl(self):
-        path = filedialog.askopenfilename(
-            title="テンプレートExcelを選択",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
-        )
-        if path:
-            self.tpl_var.set(path)
-
     # --------------------------------------------------------------- 処理実行
     def _start(self):
         pdf_path = self.pdf_var.get().strip()
-        tpl_path = self.tpl_var.get().strip()
+        tpl_path = _bundled_template()
         sheet = self.sheet_var.get().strip()
 
         if not pdf_path or not os.path.exists(pdf_path):
             messagebox.showerror("エラー", "PDFファイルを選択してください")
             return
-        if not tpl_path or not os.path.exists(tpl_path):
-            messagebox.showerror("エラー", "テンプレートExcelを選択してください")
+        if not os.path.exists(tpl_path):
+            messagebox.showerror("エラー", f"テンプレートが見つかりません:\n{tpl_path}")
             return
         if not sheet:
             messagebox.showerror("エラー", "シート名を入力してください")
