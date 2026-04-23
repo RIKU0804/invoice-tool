@@ -250,9 +250,10 @@ class App(ctk.CTk):
         ).start()
 
     def _run_extraction(self, pdf_path: str, tpl_path: str, sheet: str, furikomi, sousai: int, out_dir: str):
+        image_paths: list[str] = []
         try:
             from config import CONFIG
-            from pdf_converter import pdf_to_jpegs
+            from pdf_converter import pdf_to_jpegs, cleanup_temp_jpegs
             from orchestrator import run_parallel_extraction, select_final_result
             from excel_writer import classify_and_aggregate, write_to_template
 
@@ -310,6 +311,13 @@ class App(ctk.CTk):
         except Exception as e:
             self._log(f"\n❌ エラー: {e}")
             self.after(0, self._on_error)
+        finally:
+            if image_paths:
+                try:
+                    from pdf_converter import cleanup_temp_jpegs
+                    cleanup_temp_jpegs(image_paths)
+                except Exception:
+                    pass
 
     def _on_success(self, out_path: str):
         self.progress.stop()
@@ -334,9 +342,11 @@ class App(ctk.CTk):
         self.after(0, _write)
 
     def _log_clear(self):
-        self.log_box.configure(state="normal")
-        self.log_box.delete("1.0", "end")
-        self.log_box.configure(state="disabled")
+        def _clear():
+            self.log_box.configure(state="normal")
+            self.log_box.delete("1.0", "end")
+            self.log_box.configure(state="disabled")
+        self.after(0, _clear)
 
 
 def main():

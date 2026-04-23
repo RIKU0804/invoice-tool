@@ -35,12 +35,20 @@ def classify_and_aggregate(rows: list[dict]) -> list[dict]:
 
     for row in rows:
         tei = row["邸名"]
-        amount = row["税抜金額"]
+        amount_raw = row["税抜金額"]
         koushu = row["工種"]
         bikou = row.get("備考", "")
 
         # 集計行・特殊行はスキップ
         if not tei or tei in ("計", "合計") or "消費税" in tei or "対象外" in tei:
+            print(f"  [skip] 集計行: 邸名={tei}")
+            continue
+
+        # 金額はint強制（AIがfloat/str返してもExcel数式を壊さない）
+        try:
+            amount = int(round(float(amount_raw)))
+        except (TypeError, ValueError):
+            print(f"  [skip] 金額パース失敗: 邸={tei} 金額={amount_raw!r}")
             continue
 
         agg = by_tei[tei]
@@ -99,14 +107,21 @@ def write_to_template(
     output_path: str,
     sheet_name: str,
     aggregated: list[dict],
-    furikomi_kingaku: int = None,
-    pdf_koujidai_zeikomi: int = None,
-    pdf_sousai_zeikomi: int = None,
+    furikomi_kingaku: "int | None" = None,
+    pdf_koujidai_zeikomi: "int | None" = None,
+    pdf_sousai_zeikomi: "int | None" = None,
 ):
     """
     集計用テンプレートに新シートを追加してデータを書き込む。
     既存シートの書式・計算式パターンを踏襲する。
     """
+    MAX_TEI = 18
+    if len(aggregated) > MAX_TEI:
+        raise ValueError(
+            f"邸数が{MAX_TEI}を超えています: {len(aggregated)}邸。"
+            f"テンプレートの明細行(5-22)をオーバーします。"
+        )
+
     wb = load_workbook(template_path)
 
     # コピー元シートを決める（最新の月次シートをベースに）
@@ -188,7 +203,10 @@ def write_to_template(
     # 使いやすさ機能（プルダウン・条件付き書式・担当邸数）
     _add_usability_features(new_ws)
 
-    wb.save(output_path)
+    try:
+        wb.save(output_path)
+    finally:
+        wb.close()
 
 
 def _write_furikomi_verification(ws, furikomi, koujidai, sousai):
@@ -196,7 +214,7 @@ def _write_furikomi_verification(ws, furikomi, koujidai, sousai):
     # 既存欄クリア（旧位置34-41 と 新位置37-44 両方）
     for r in range(34, 45):
         for c in range(2, 6):
-            ws.cell(r, c).value = None
+            ws.cell(row=r, column=c).value = None
 
     ws['B37'] = '【振込金額照合（税抜⇔税込の二重計算）】'
     ws['B37'].font = copy(ws['C2'].font)

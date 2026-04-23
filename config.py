@@ -14,11 +14,26 @@ APIキーの取得優先順位:
 
 import os
 
+def _deobfuscate(blob: str) -> str:
+    """XOR難読化された文字列を復号する。完全な暗号化ではなくスクリプトキディ除け。"""
+    import base64
+    data = base64.b64decode(blob)
+    key = b"shiharai-invoice-tool-2026-internal"
+    return bytes(b ^ key[i % len(key)] for i, b in enumerate(data)).decode("utf-8")
+
+
 def _load_api_key() -> str:
     # 1. ビルド時埋め込み (_secret.py はGitignore済み、GitHub Actionsが生成)
+    #    _secret.OPENROUTER_API_KEY_OBFUSCATED がbase64エンコードされたXOR難読化済み文字列
     try:
-        from _secret import OPENROUTER_API_KEY
-        return OPENROUTER_API_KEY
+        import _secret
+        obf = getattr(_secret, "OPENROUTER_API_KEY_OBFUSCATED", "")
+        if obf:
+            return _deobfuscate(obf)
+        # 互換: 旧形式
+        plain = getattr(_secret, "OPENROUTER_API_KEY", "")
+        if plain:
+            return plain
     except ImportError:
         pass
 
