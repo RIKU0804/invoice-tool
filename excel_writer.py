@@ -182,6 +182,14 @@ def write_to_template(
     # 合計行の数式を挿入後の範囲で書き換え
     _rewrite_sum_row(ws, sum_row, data_last_row)
 
+    # 付帯数式（原材料経費合計・生産課支払）も行挿入で参照がズレるため書き換え
+    # 原テンプレ配置: I25=SUM(E5:I23), E26=SUM(E24:F24)
+    # 行挿入後: I(25+extra), E(26+extra)
+    i_zairyo_row = 25 + extra
+    e_seisanka_row = 26 + extra
+    ws[f'I{i_zairyo_row}'] = f'=SUM(E5:I{data_last_row})'
+    ws[f'E{e_seisanka_row}'] = f'=SUM(E{sum_row}:F{sum_row})'
+
     # 担当者別集計(SUMIF) - 挿入後の行/範囲
     data_range_J = f"J5:J{data_last_row}"
     data_range_K = f"K5:K{data_last_row}"
