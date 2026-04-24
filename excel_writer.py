@@ -28,7 +28,7 @@ from copy import copy
 from collections import defaultdict
 
 
-DEFAULT_DATA_ROWS = 18  # テンプレ既定の明細行数(5-22)
+DEFAULT_DATA_ROWS = 27  # テンプレ既定の明細行数(5-31)、合計は32行目
 MAX_TEI = 50             # これ以上は明示的にエラー
 
 
@@ -145,17 +145,18 @@ def write_to_template(
         ws.unmerge_cells(str(m))
 
     # 合計行を常に 5+n_tei 行に統一（邸数に関わらずデータ行の直下）
-    # 元テンプレ配置: data 5-22, spacer 23, 合計 24
-    # n_tei=18: 合計を行23に → 行23(スペーサー)削除
-    # n_tei<18: 余り行+スペーサー削除
-    # n_tei>18: 行挿入+元スペーサー削除
+    # 新テンプレ配置: data 5-31 (27行), 合計 32
+    # n_tei=27: 合計は32のまま (変更なし)
+    # n_tei<27: 余りデータ行を削除して合計を 5+n_tei に詰める
+    # n_tei>27: 行挿入して拡張
+    base_sum_row = 5 + DEFAULT_DATA_ROWS  # 32
     if n_tei > DEFAULT_DATA_ROWS:
         extra = n_tei - DEFAULT_DATA_ROWS
-        ws.insert_rows(23, amount=extra)
-        # 行22の書式をコピー
-        src_row = 22
+        ws.insert_rows(base_sum_row, amount=extra)
+        # 行(base_sum_row-1)=最後のデータ行の書式をコピー
+        src_row = base_sum_row - 1  # 31
         src_height = ws.row_dimensions[src_row].height
-        for new_r in range(23, 23 + extra):
+        for new_r in range(base_sum_row, base_sum_row + extra):
             ws.row_dimensions[new_r].height = src_height
             for col_idx in range(1, 15):
                 src_cell = ws.cell(row=src_row, column=col_idx)
@@ -171,22 +172,19 @@ def write_to_template(
                     dst_cell.value = f'=ROUNDDOWN(D{new_r}-E{new_r}-F{new_r}-G{new_r}-H{new_r}-I{new_r},0)'
                 elif col_idx == 12:
                     dst_cell.value = f'=J{new_r}/D{new_r}'
-        # 元スペーサー(行23 が extra 分下にシフト)を削除
-        ws.delete_rows(23 + extra, amount=1)
-        print(f"  [insert] {extra}行追加+スペーサー削除 ({n_tei}邸)")
-    else:
-        # n_tei <= 18 → 余りデータ行+スペーサーを削除して合計を 5+n_tei に詰める
-        delete_count = 19 - n_tei  # 最小1(n=18の時)〜最大14(n=5の時)
-        if delete_count > 0:
-            ws.delete_rows(5 + n_tei, amount=delete_count)
-            print(f"  [delete] {delete_count}行削除 ({n_tei}邸)")
+        print(f"  [insert] {extra}行追加 ({n_tei}邸)")
+    elif n_tei < DEFAULT_DATA_ROWS:
+        # 余りデータ行を削除して合計を詰める
+        delete_count = DEFAULT_DATA_ROWS - n_tei
+        ws.delete_rows(5 + n_tei, amount=delete_count)
+        print(f"  [delete] {delete_count}行削除 ({n_tei}邸)")
 
     # 行番号ヘルパー（合計行は常に 5 + n_tei）
     data_last_row = 4 + n_tei
     sum_row = 5 + n_tei
-    hancho_row_start = sum_row + 5      # 元24→29なので+5
-    furikomi_start = sum_row + 13       # 元24→37なので+13
-    extra = 0  # 後続のレガシーなオフセット計算を無効化
+    hancho_row_start = sum_row + 5      # 32→37なので+5
+    furikomi_start = sum_row + 13       # 32→45なので+13
+    extra = 0
 
     # 赤枠再描画（合計行=5+n_tei 基準、元テンプレB29:J35 → B(sum_row+5):J(sum_row+11)）
     red_top = sum_row + 5
