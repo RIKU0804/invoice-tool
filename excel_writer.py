@@ -15,6 +15,7 @@ Excel反映モジュール
 邸数が18を超える場合、行23の前に行を挿入することで範囲を拡張する。
 """
 
+import datetime
 from typing import Optional
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
@@ -181,9 +182,14 @@ def write_to_template(
     # タイトル
     ws['C2'] = f'{sheet_name}　着工=受注　ベース'
 
-    # 支払日 (PDFから抽出) を K1 に表示。既存の"YYYY/MM/DD 更新"は上書き
+    # K1: 更新日（今日の日付）
+    today = datetime.date.today()
+    ws['K1'] = f'{today.year}/{today.month}/{today.day} 更新'
+    # K2: 支払日（PDFから抽出、無ければ空）
     if payment_date:
-        ws['K1'] = f'支払日: {payment_date}'
+        ws['K2'] = f'支払日: {payment_date}'
+    else:
+        ws['K2'] = None
 
     # 旧レイアウトの注釈セル(K27:L27相当)をクリア（sum_row + 3）
     note_row = sum_row + 3
