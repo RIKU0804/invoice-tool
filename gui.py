@@ -15,6 +15,7 @@ import webbrowser
 from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
+from PIL import Image
 
 from version import VERSION
 
@@ -62,7 +63,7 @@ class App(ctk.CTk):
         super().__init__()
         self.settings = _load_settings()
         self.title(f"PDF 明細抽出  v{VERSION}")
-        self.geometry("560x720")
+        self.geometry("760x720")
         self.resizable(False, False)
         self._build_ui()
         self._center_window()
@@ -195,7 +196,7 @@ class App(ctk.CTk):
 
     def _center_window(self):
         self.update_idletasks()
-        w, h = 560, 720
+        w, h = 760, 720
         x = (self.winfo_screenwidth() - w) // 2
         y = (self.winfo_screenheight() - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
@@ -277,7 +278,7 @@ class App(ctk.CTk):
         self.furikomi_var = ctk.StringVar()
         ctk.CTkEntry(
             frm_info, textvariable=self.furikomi_var,
-            placeholder_text="空欄でもOK", width=200
+            placeholder_text="PDF選択で自動入力", width=200
         ).grid(row=1, column=1, columnspan=4, padx=(0, 16), pady=(0, 12), sticky="w")
 
         ctk.CTkLabel(frm_info, text="税込相殺", width=110, anchor="w").grid(
@@ -286,8 +287,16 @@ class App(ctk.CTk):
         self.sousai_var = ctk.StringVar()
         ctk.CTkEntry(
             frm_info, textvariable=self.sousai_var,
-            placeholder_text="例: -15000（空欄で0扱い）", width=200
+            placeholder_text="PDF選択で自動入力", width=200
         ).grid(row=2, column=1, columnspan=4, padx=(0, 16), pady=(0, 12), sticky="w")
+
+        # 右側: PDFスニペット画像（自動取得された値の根拠を視覚確認）
+        self.snippet_label = ctk.CTkLabel(frm_info, text="PDF抽出プレビュー\n（PDFを選択すると\nここに表示されます）",
+                                           width=220, height=80, text_color="gray",
+                                           fg_color=("gray90", "gray20"),
+                                           corner_radius=6)
+        self.snippet_label.grid(row=1, column=5, rowspan=2, padx=(0, 16), pady=(0, 12), sticky="nsew")
+        self._snippet_ctkimage = None  # GC対策でインスタンスに保持
 
         # --- 処理開始ボタン ---
         self.run_btn = ctk.CTkButton(
@@ -332,6 +341,45 @@ class App(ctk.CTk):
         )
         if path:
             self.pdf_var.set(path)
+            self._autofill_from_pdf(path)
+
+    def _autofill_from_pdf(self, pdf_path: str):
+        """PDFから振込金額/相殺を自動抽出してフィールドに入れる + スニペット画像表示"""
+        def _worker():
+            try:
+                from plumber_extractor import extract_totals_and_snippet
+                tmp_dir = Path(tempfile.gettempdir())
+                snippet_path = tmp_dir / "invoice-tool-snippet.png"
+                result = extract_totals_and_snippet(pdf_path, str(snippet_path))
+                def _apply():
+                    if result.get("furikomi") is not None:
+                        self.furikomi_var.set(str(result["furikomi"]))
+                    if result.get("sousai") is not None:
+                        self.sousai_var.set(str(result["sousai"]))
+                    if result.get("snippet_path") and os.path.exists(result["snippet_path"]):
+                        self._show_snippet(result["snippet_path"])
+                    else:
+                        self.snippet_label.configure(text="プレビュー取得失敗\n（合計行が見つからない）")
+                self.after(0, _apply)
+            except Exception as e:
+                self.after(0, lambda: self.snippet_label.configure(text=f"抽出エラー\n{e}"))
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _show_snippet(self, path: str):
+        try:
+            img = Image.open(path)
+            # 表示エリアに収まるようにリサイズ（最大幅220, 最大高さ80）
+            max_w, max_h = 220, 80
+            w, h = img.size
+            ratio = min(max_w / w, max_h / h)
+            new_w = max(1, int(w * ratio))
+            new_h = max(1, int(h * ratio))
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+            ctki = ctk.CTkImage(light_image=img, dark_image=img, size=(new_w, new_h))
+            self._snippet_ctkimage = ctki
+            self.snippet_label.configure(image=ctki, text="")
+        except Exception as e:
+            self.snippet_label.configure(text=f"表示エラー\n{e}")
 
     def _browse_out_dir(self):
         path = filedialog.askdirectory(title="出力先フォルダを選択")
