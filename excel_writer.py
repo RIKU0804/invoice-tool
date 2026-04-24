@@ -319,7 +319,7 @@ def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: 
     ws.cell(row=r_header, column=2, value='【振込金額照合（税抜⇔税込の二重計算）】')
     ws.cell(row=r_header, column=2).font = copy(ws['C2'].font)
 
-    ws.cell(row=r_furikomi, column=2, value='① 振込金額(税込・実際に振り込まれた額)')
+    ws.cell(row=r_furikomi, column=2, value='① 振込金額(税込)')
     ws.cell(row=r_furikomi, column=4, value=furikomi if furikomi else None)
     ws.cell(row=r_sousai, column=2, value='② 税込相殺(PDF・手入力)')
     ws.cell(row=r_sousai, column=4, value=sousai if sousai else None)
