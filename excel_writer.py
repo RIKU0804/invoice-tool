@@ -325,6 +325,15 @@ def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: 
     ws.cell(row=r_sousai, column=4, value=sousai if sousai else None)
     ws.cell(row=r_zeikomi_total, column=2, value='③ 税込工事代計(① − ②)')
     ws.cell(row=r_zeikomi_total, column=4, value=f'=D{r_furikomi}-D{r_sousai}')
+    # ③ 行のboldを解除（テンプレ由来で太字になってるため）
+    b_font = ws.cell(row=r_zeikomi_total, column=2).font
+    d_font = ws.cell(row=r_zeikomi_total, column=4).font
+    ws.cell(row=r_zeikomi_total, column=2).font = Font(
+        name=b_font.name, size=b_font.size or 17, bold=False, color=b_font.color
+    )
+    ws.cell(row=r_zeikomi_total, column=4).font = Font(
+        name=d_font.name, size=d_font.size or 17, bold=False, color=d_font.color
+    )
     ws.cell(row=r_zeinuki_calc, column=2, value='④ 税抜逆算(③ ÷ 1.1)')
     ws.cell(row=r_zeinuki_calc, column=4, value=f'=ROUND(D{r_zeikomi_total}/1.1,0)')
     ws.cell(row=r_excel_total, column=2, value=f'⑤ Excel税抜合計(J{sum_row})')
@@ -382,9 +391,9 @@ def _add_usability_features(ws, data_last_row: int, furikomi_start: int):
     # 班長名による配置と色分け
     _add_hancho_styling(ws, k_range)
 
-    # L列(粗利率)右揃え統一
+    # L列(粗利率)右揃え統一（右マージン確保のため indent=1）
     for r in range(5, data_last_row + 1):
-        ws[f'L{r}'].alignment = Alignment(horizontal='right', vertical='center')
+        ws[f'L{r}'].alignment = Alignment(horizontal='right', vertical='center', indent=1)
 
     # 担当邸数カウント(N3:O9) - 固定位置（挿入された行に影響されない想定）
     ws['N3'] = '【担当邸数】'
