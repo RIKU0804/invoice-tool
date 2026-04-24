@@ -116,6 +116,8 @@ def write_to_template(
 ):
     """集計用テンプレートに書き込む。邸数に応じて動的に行挿入する。"""
     n_tei = len(aggregated)
+    if n_tei < 1:
+        raise ValueError("抽出された邸数が0です。PDFの内容を確認してください。")
     if n_tei > MAX_TEI:
         raise ValueError(f"邸数が{MAX_TEI}を超えています: {n_tei}邸")
 
@@ -310,9 +312,9 @@ def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: 
     ws.cell(row=r_header, column=2).font = copy(ws['C2'].font)
 
     ws.cell(row=r_furikomi, column=2, value='① 振込金額(税込)')
-    ws.cell(row=r_furikomi, column=4, value=furikomi if furikomi else None)
+    ws.cell(row=r_furikomi, column=4, value=furikomi if furikomi is not None else None)
     ws.cell(row=r_sousai, column=2, value='② 税込相殺(PDF・手入力)')
-    ws.cell(row=r_sousai, column=4, value=sousai if sousai else None)
+    ws.cell(row=r_sousai, column=4, value=sousai if sousai is not None else None)
     ws.cell(row=r_zeikomi_total, column=2, value='③ 税込工事代計(① − ②)')
     ws.cell(row=r_zeikomi_total, column=4, value=f'=D{r_furikomi}-D{r_sousai}')
     # ③ 行のboldを解除（テンプレ由来で太字になってるため）

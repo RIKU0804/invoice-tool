@@ -24,18 +24,38 @@ def extract_payment_date(pdf_path: str) -> Optional[str]:
     return None
 
 
-def extract_totals_and_snippet(pdf_path: str, snippet_out_path: Optional[str] = None) -> dict:
+def _to_int_amount(s: str) -> int:
+    s = s.strip()
+    neg = s.startswith(("▲", "-", "−", "▽"))
+    digits = re.sub(r'[^\d]', '', s)
+    if not digits:
+        return 0
+    return -int(digits) if neg else int(digits)
+
+
+def extract_totals_and_snippets(
+    pdf_path: str,
+    furikomi_snippet_path: Optional[str] = None,
+    sousai_snippet_path: Optional[str] = None,
+) -> dict:
     """
     PDFから振込金額(合計の税込)と税込相殺を抽出し、
-    根拠となる画像スニペットをPNG保存する。
+    それぞれ独立したスニペット画像をPNG保存する。
 
     Returns:
-        {"furikomi": int|None, "sousai": int|None, "snippet_path": str|None}
+        {
+            "furikomi": int|None,
+            "sousai": int|None,
+            "furikomi_snippet": str|None,
+            "sousai_snippet": str|None,
+        }
     """
-    result = {"furikomi": None, "sousai": None, "snippet_path": None}
+    result = {
+        "furikomi": None, "sousai": None,
+        "furikomi_snippet": None, "sousai_snippet": None,
+    }
     try:
         with pdfplumber.open(pdf_path) as pdf:
-            # 合計・相殺計が載っている最終ページを探す
             target_page = None
             for page in pdf.pages:
                 text = page.extract_text() or ""
@@ -45,25 +65,40 @@ def extract_totals_and_snippet(pdf_path: str, snippet_out_path: Optional[str] = 
                 return result
 
             text = target_page.extract_text() or ""
-            # 合計行（末尾の大きな数字3つ）: 税抜, 消費税, 税込
-            m = re.search(r'合計\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)', text)
-            if m:
-                result["furikomi"] = int(m.group(3).replace(",", ""))
-            # ＜相殺 計＞行
-            m2 = re.search(r'＜相殺\s*計＞\s*([▲▽\-−]?[\d,]+)\s+([▲▽\-−]?[\d,]*)\s*([▲▽\-−]?[\d,]+)', text)
-            if m2:
-                def _to_int(s):
-                    s = s.strip()
-                    neg = s.startswith(("▲", "-", "−", "▽"))
-                    s = re.sub(r'[^\d]', '', s)
-                    if not s:
-                        return 0
-                    return -int(s) if neg else int(s)
-                result["sousai"] = _to_int(m2.group(3))
+            # 最後の合計マッチを採用（複数ある場合にサブトータル誤認を回避）
+            all_goukei = re.findall(r'合計\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)', text)
+            if all_goukei:
+                result["furikomi"] = int(all_goukei[-1][2].replace(",", ""))
 
-            # スニペット画像を保存（工事代計〜合計の範囲を切り出す）
-            if snippet_out_path:
-                words = target_page.extract_words()
+            m_sousai = re.search(
+                r'＜相殺\s*計＞\s*([▲▽\-−]?[\d,]+)\s+([▲▽\-−]?[\d,]*)\s*([▲▽\-−]?[\d,]+)',
+                text,
+            )
+            if m_sousai:
+                result["sousai"] = _to_int_amount(m_sousai.group(3))
+
+            words = target_page.extract_words()
+
+            # 左端: ＜工事代 計＞/＜相殺 計＞/合計 ラベルの最も左
+            left_x = None
+            for w in words:
+                if '工事代' in w['text'] or '相殺' in w['text'] or w['text'] == '合計':
+                    if left_x is None or w['x0'] < left_x:
+                        left_x = w['x0']
+            left_x = max(0.0, (left_x or 230.0) - 6)
+
+            def _save_crop(top: float, bottom: float, out_path: str):
+                try:
+                    cropped = target_page.crop((left_x, top, target_page.width, bottom))
+                    img = cropped.to_image(resolution=300)
+                    img.save(out_path, format="PNG")
+                    return out_path
+                except Exception as e:
+                    print(f"  [スニペット生成] エラー: {e}")
+                    return None
+
+            # 振込金額スニペット: 「＜工事代 計＞」行 〜 「合計」行（包含）
+            if furikomi_snippet_path:
                 top_y = None
                 bottom_y = None
                 for w in words:
@@ -72,24 +107,38 @@ def extract_totals_and_snippet(pdf_path: str, snippet_out_path: Optional[str] = 
                     if w['text'] == '合計' and bottom_y is None:
                         bottom_y = w['bottom'] + 4
                 if top_y is not None and bottom_y is not None and bottom_y > top_y:
-                    try:
-                        # 左側の邸名列は不要。＜工事代 計＞などラベル付近〜ページ右端までをクロップ
-                        # 合計ラベルや数値3列(税抜/消費税/税込)が見える範囲を対象にする
-                        left_x = None
-                        for w in words:
-                            if '工事代' in w['text'] or '相殺' in w['text']:
-                                if left_x is None or w['x0'] < left_x:
-                                    left_x = w['x0']
-                        left_x = max(0.0, (left_x or 230.0) - 6)
-                        cropped = target_page.crop((left_x, top_y, target_page.width, bottom_y))
-                        img = cropped.to_image(resolution=300)
-                        img.save(snippet_out_path, format="PNG")
-                        result["snippet_path"] = snippet_out_path
-                    except Exception as e:
-                        print(f"  [スニペット生成] エラー: {e}")
+                    result["furikomi_snippet"] = _save_crop(top_y, bottom_y, furikomi_snippet_path)
+
+            # 税込相殺スニペット: 「退職年金掛金」行 〜 「＜相殺 計＞」行
+            if sousai_snippet_path:
+                top_y = None
+                bottom_y = None
+                for w in words:
+                    if ('退職年金' in w['text'] or '対象外' in w['text']) and top_y is None:
+                        top_y = w['top'] - 4
+                    if '相殺' in w['text']:
+                        bottom_y = w['bottom'] + 4
+                # フォールバック: 工事代計〜相殺計
+                if top_y is None:
+                    for w in words:
+                        if '工事代' in w['text']:
+                            top_y = w['top'] - 4
+                            break
+                if top_y is not None and bottom_y is not None and bottom_y > top_y:
+                    result["sousai_snippet"] = _save_crop(top_y, bottom_y, sousai_snippet_path)
     except Exception as e:
         print(f"  [合計抽出] エラー: {e}")
     return result
+
+
+# 互換のため旧関数名も残す
+def extract_totals_and_snippet(pdf_path: str, snippet_out_path: Optional[str] = None) -> dict:
+    r = extract_totals_and_snippets(pdf_path, snippet_out_path, None)
+    return {
+        "furikomi": r.get("furikomi"),
+        "sousai": r.get("sousai"),
+        "snippet_path": r.get("furikomi_snippet"),
+    }
 
 
 def extract_with_pdfplumber(pdf_path: str) -> dict | None:
@@ -104,14 +153,14 @@ def extract_with_pdfplumber(pdf_path: str) -> dict | None:
         all_rows = []
 
         with pdfplumber.open(pdf_path) as pdf:
+            any_text_page = False
             for page_num, page in enumerate(pdf.pages, start=1):
-                # テキスト抽出で内容があるか判定（画像PDFだと空）
                 text = page.extract_text() or ""
                 if len(text.strip()) < 50:
-                    print(f"  [pdfplumber] Page {page_num}: テキストなし → 画像PDFの可能性")
-                    return None
+                    print(f"  [pdfplumber] Page {page_num}: テキスト少 → スキップ")
+                    continue
+                any_text_page = True
 
-                # 表を抽出
                 tables = page.extract_tables()
                 for table in tables:
                     for row in table:
@@ -120,6 +169,10 @@ def extract_with_pdfplumber(pdf_path: str) -> dict | None:
                         parsed = _parse_row(row)
                         if parsed:
                             all_rows.append(parsed)
+
+            if not any_text_page:
+                print("  [pdfplumber] 全ページでテキスト検出失敗 → 画像PDFの可能性")
+                return None
 
         if not all_rows:
             print("  [pdfplumber] 明細行を検出できず")
