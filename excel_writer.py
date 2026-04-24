@@ -28,7 +28,7 @@ from copy import copy
 from collections import defaultdict
 
 
-DEFAULT_DATA_ROWS = 27  # テンプレ既定の明細行数(5-31)、合計は32行目
+DEFAULT_DATA_ROWS = 18  # テンプレ既定の明細行数(5-22)、合計は24行目
 MAX_TEI = 50             # これ以上は明示的にエラー
 
 
@@ -123,40 +123,25 @@ def write_to_template(
     if n_tei > MAX_TEI:
         raise ValueError(f"邸数が{MAX_TEI}を超えています: {n_tei}邸")
 
-    # output_path が既にあればそれを、なければテンプレートを読み込む
-    # （年次ファイル運用：同じ年内の他月/賞与シートを保持する）
-    import os as _os
-    base_path = output_path if _os.path.exists(output_path) else template_path
-    wb = load_workbook(base_path)
-
-    # sheet_name (例: "2026年4月") から月(例: "4月")を抽出してそのシートを探す
-    m_month = re.search(r'(\d{1,2})月', sheet_name)
-    target_sheet_name = f"{m_month.group(1)}月" if m_month else sheet_name
-    if target_sheet_name not in wb.sheetnames:
-        raise ValueError(
-            f"テンプレートに '{target_sheet_name}' シートが見つかりません。"
-            f"シート一覧: {wb.sheetnames}"
-        )
-    ws = wb[target_sheet_name]
-    # シート名は"4月"のまま保持（賞与シート等がこの名前を参照する可能性）
+    wb = load_workbook(template_path)
+    ws = wb[wb.sheetnames[0]]
+    ws.title = sheet_name
 
     # 全mergeを解除（read-only エラー回避）
     for m in list(ws.merged_cells.ranges):
         ws.unmerge_cells(str(m))
 
     # 合計行を常に 5+n_tei 行に統一（邸数に関わらずデータ行の直下）
-    # 新テンプレ配置: data 5-31 (27行), 合計 32
-    # n_tei=27: 合計は32のまま (変更なし)
-    # n_tei<27: 余りデータ行を削除して合計を 5+n_tei に詰める
-    # n_tei>27: 行挿入して拡張
-    base_sum_row = 5 + DEFAULT_DATA_ROWS  # 32
+    # 元テンプレ配置: data 5-22, spacer 23, 合計 24
+    # n_tei=18: スペーサー(23)だけ削除 → 合計が23に
+    # n_tei<18: 余りデータ行+スペーサー削除
+    # n_tei>18: 行挿入+元スペーサー削除
     if n_tei > DEFAULT_DATA_ROWS:
         extra = n_tei - DEFAULT_DATA_ROWS
-        ws.insert_rows(base_sum_row, amount=extra)
-        # 行(base_sum_row-1)=最後のデータ行の書式をコピー
-        src_row = base_sum_row - 1  # 31
+        ws.insert_rows(23, amount=extra)
+        src_row = 22
         src_height = ws.row_dimensions[src_row].height
-        for new_r in range(base_sum_row, base_sum_row + extra):
+        for new_r in range(23, 23 + extra):
             ws.row_dimensions[new_r].height = src_height
             for col_idx in range(1, 15):
                 src_cell = ws.cell(row=src_row, column=col_idx)
@@ -172,18 +157,18 @@ def write_to_template(
                     dst_cell.value = f'=ROUNDDOWN(D{new_r}-E{new_r}-F{new_r}-G{new_r}-H{new_r}-I{new_r},0)'
                 elif col_idx == 12:
                     dst_cell.value = f'=J{new_r}/D{new_r}'
-        print(f"  [insert] {extra}行追加 ({n_tei}邸)")
-    elif n_tei < DEFAULT_DATA_ROWS:
-        # 余りデータ行を削除して合計を詰める
-        delete_count = DEFAULT_DATA_ROWS - n_tei
-        ws.delete_rows(5 + n_tei, amount=delete_count)
-        print(f"  [delete] {delete_count}行削除 ({n_tei}邸)")
+        ws.delete_rows(23 + extra, amount=1)
+        print(f"  [insert] {extra}行追加+スペーサー削除 ({n_tei}邸)")
+    else:
+        delete_count = 19 - n_tei
+        if delete_count > 0:
+            ws.delete_rows(5 + n_tei, amount=delete_count)
+            print(f"  [delete] {delete_count}行削除 ({n_tei}邸)")
 
-    # 行番号ヘルパー（合計行は常に 5 + n_tei）
     data_last_row = 4 + n_tei
     sum_row = 5 + n_tei
-    hancho_row_start = sum_row + 5      # 32→37なので+5
-    furikomi_start = sum_row + 13       # 32→45なので+13
+    hancho_row_start = sum_row + 5
+    furikomi_start = sum_row + 13
     extra = 0
 
     # 赤枠再描画（合計行=5+n_tei 基準、元テンプレB29:J35 → B(sum_row+5):J(sum_row+11)）

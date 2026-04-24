@@ -451,8 +451,7 @@ class App(ctk.CTk):
             from plumber_extractor import extract_with_pdfplumber, extract_payment_date
             from excel_writer import classify_and_aggregate, write_to_template
 
-            # 年次ファイルとして出力（同じ年内の他月/賞与を保持）
-            out_path = Path(out_dir) / f"集計用_{self.year_var.get()}年.xlsx"
+            out_path = Path(out_dir) / f"集計用_{sheet}.xlsx"
 
             self._log("[Step 1] PDFから明細を抽出 (pdfplumber)")
             plumber_result = extract_with_pdfplumber(pdf_path)
