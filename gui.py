@@ -291,34 +291,20 @@ class App(ctk.CTk):
             placeholder_text="PDF選択で自動入力", width=200
         ).grid(row=2, column=1, columnspan=4, padx=(0, 16), pady=(0, 12), sticky="w")
 
-        # 右側: 振込金額 用スニペット画像（クリックで原寸表示）
-        self.furikomi_snippet_label = ctk.CTkLabel(
+        # 右側: PDFスニペット画像（振込金額+相殺の範囲をまとめて表示、クリックで原寸）
+        self.snippet_label = ctk.CTkLabel(
             frm_info,
-            text="① 振込金額プレビュー\n（PDFを選択すると表示）",
-            width=440, height=60, text_color="gray",
+            text="PDF抽出プレビュー\n（PDFを選択すると表示）",
+            width=440, height=140, text_color="gray",
             fg_color=("gray90", "gray20"),
             corner_radius=6,
             cursor="hand2",
         )
-        self.furikomi_snippet_label.grid(row=1, column=5, padx=(8, 16), pady=(0, 4), sticky="nsew")
-        self.furikomi_snippet_label.bind("<Button-1>", lambda e: self._open_snippet(self._furikomi_snippet_path))
+        self.snippet_label.grid(row=1, column=5, rowspan=2, padx=(8, 16), pady=(0, 12), sticky="nsew")
+        self.snippet_label.bind("<Button-1>", lambda e: self._open_snippet(self._snippet_src_path))
 
-        # 税込相殺 用スニペット画像
-        self.sousai_snippet_label = ctk.CTkLabel(
-            frm_info,
-            text="② 税込相殺プレビュー\n（PDFを選択すると表示）",
-            width=440, height=60, text_color="gray",
-            fg_color=("gray90", "gray20"),
-            corner_radius=6,
-            cursor="hand2",
-        )
-        self.sousai_snippet_label.grid(row=2, column=5, padx=(8, 16), pady=(0, 12), sticky="nsew")
-        self.sousai_snippet_label.bind("<Button-1>", lambda e: self._open_snippet(self._sousai_snippet_path))
-
-        self._furikomi_ctkimg = None
-        self._sousai_ctkimg = None
-        self._furikomi_snippet_path: str | None = None
-        self._sousai_snippet_path: str | None = None
+        self._snippet_ctkimage = None
+        self._snippet_src_path: Optional[str] = None
 
         # --- 処理開始ボタン ---
         self.run_btn = ctk.CTkButton(
@@ -366,54 +352,45 @@ class App(ctk.CTk):
             self._autofill_from_pdf(path)
 
     def _autofill_from_pdf(self, pdf_path: str):
-        """PDFから振込金額/相殺を自動抽出してフィールドに入れる + 各スニペット画像表示"""
+        """PDFから振込金額/相殺を自動抽出してフィールドに入れる + スニペット画像表示"""
         def _worker():
             try:
-                from plumber_extractor import extract_totals_and_snippets
+                from plumber_extractor import extract_totals_and_snippet
                 tmp_dir = Path(tempfile.gettempdir())
-                f_snip = tmp_dir / "invoice-tool-furikomi.png"
-                s_snip = tmp_dir / "invoice-tool-sousai.png"
-                result = extract_totals_and_snippets(pdf_path, str(f_snip), str(s_snip))
+                snippet_path = tmp_dir / "invoice-tool-snippet.png"
+                result = extract_totals_and_snippet(pdf_path, str(snippet_path))
 
                 def _apply():
                     if result.get("furikomi") is not None:
                         self.furikomi_var.set(str(result["furikomi"]))
                     if result.get("sousai") is not None:
                         self.sousai_var.set(str(result["sousai"]))
-
-                    fp = result.get("furikomi_snippet")
-                    if fp and os.path.exists(fp):
-                        self._show_image(self.furikomi_snippet_label, fp, "_furikomi_ctkimg", "_furikomi_snippet_path")
+                    p = result.get("snippet_path")
+                    if p and os.path.exists(p):
+                        self._show_snippet(p)
                     else:
-                        self.furikomi_snippet_label.configure(text="振込金額プレビュー取得失敗")
-
-                    sp = result.get("sousai_snippet")
-                    if sp and os.path.exists(sp):
-                        self._show_image(self.sousai_snippet_label, sp, "_sousai_ctkimg", "_sousai_snippet_path")
-                    else:
-                        self.sousai_snippet_label.configure(text="税込相殺プレビュー取得失敗")
+                        self.snippet_label.configure(text="プレビュー取得失敗\n（合計行が見つからない）")
                 self.after(0, _apply)
             except Exception as e:
                 err = str(e)
-                self.after(0, lambda: self.furikomi_snippet_label.configure(text=f"抽出エラー\n{err}"))
+                self.after(0, lambda: self.snippet_label.configure(text=f"抽出エラー\n{err}"))
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _show_image(self, label_widget, path: str, img_attr: str, path_attr: str):
-        """画像をラベルに表示（最大幅430、最大高さ60）"""
+    def _show_snippet(self, path: str):
         try:
             img = Image.open(path)
-            max_w, max_h = 430, 60
+            max_w, max_h = 430, 130
             w, h = img.size
             ratio = min(max_w / w, max_h / h)
             new_w = max(1, int(w * ratio))
             new_h = max(1, int(h * ratio))
             resized = img.resize((new_w, new_h), Image.LANCZOS)
             ctki = ctk.CTkImage(light_image=resized, dark_image=resized, size=(new_w, new_h))
-            setattr(self, img_attr, ctki)
-            setattr(self, path_attr, path)
-            label_widget.configure(image=ctki, text="")
+            self._snippet_ctkimage = ctki
+            self._snippet_src_path = path
+            self.snippet_label.configure(image=ctki, text="")
         except Exception as e:
-            label_widget.configure(text=f"表示エラー\n{e}")
+            self.snippet_label.configure(text=f"表示エラー\n{e}")
 
     def _open_snippet(self, path: Optional[str]):
         if path and os.path.exists(path):

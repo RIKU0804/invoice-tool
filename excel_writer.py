@@ -337,12 +337,12 @@ def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: 
     for r in [r_furikomi, r_sousai, r_zeikomi_total, r_zeinuki_calc, r_excel_total, r_sagaku]:
         ws.cell(row=r, column=4).number_format = '#,##0;[Red]▲#,##0'
 
-    # ⑥差額 行は他の振込金額照合行と同じサイズ(17)で太字にする
+    # ⑥差額 行は他の振込金額照合行と同じサイズ(17)、太字にしない
     ws.cell(row=r_sagaku, column=2).font = Font(
-        name=ws.cell(row=r_furikomi, column=2).font.name, size=17, bold=True
+        name=ws.cell(row=r_furikomi, column=2).font.name, size=17, bold=False
     )
     ws.cell(row=r_sagaku, column=4).font = Font(
-        name=ws.cell(row=r_furikomi, column=4).font.name, size=17, bold=True
+        name=ws.cell(row=r_furikomi, column=4).font.name, size=17, bold=False
     )
 
 

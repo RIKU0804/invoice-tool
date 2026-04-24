@@ -33,27 +33,15 @@ def _to_int_amount(s: str) -> int:
     return -int(digits) if neg else int(digits)
 
 
-def extract_totals_and_snippets(
-    pdf_path: str,
-    furikomi_snippet_path: Optional[str] = None,
-    sousai_snippet_path: Optional[str] = None,
-) -> dict:
+def extract_totals_and_snippet(pdf_path: str, snippet_out_path: Optional[str] = None) -> dict:
     """
     PDFから振込金額(合計の税込)と税込相殺を抽出し、
-    それぞれ独立したスニペット画像をPNG保存する。
+    根拠となる画像スニペットをPNG保存する。
 
     Returns:
-        {
-            "furikomi": int|None,
-            "sousai": int|None,
-            "furikomi_snippet": str|None,
-            "sousai_snippet": str|None,
-        }
+        {"furikomi": int|None, "sousai": int|None, "snippet_path": str|None}
     """
-    result = {
-        "furikomi": None, "sousai": None,
-        "furikomi_snippet": None, "sousai_snippet": None,
-    }
+    result = {"furikomi": None, "sousai": None, "snippet_path": None}
     try:
         with pdfplumber.open(pdf_path) as pdf:
             target_page = None
@@ -65,7 +53,7 @@ def extract_totals_and_snippets(
                 return result
 
             text = target_page.extract_text() or ""
-            # 最後の合計マッチを採用（複数ある場合にサブトータル誤認を回避）
+            # 最後の合計マッチ（サブトータル誤認回避）
             all_goukei = re.findall(r'合計\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)', text)
             if all_goukei:
                 result["furikomi"] = int(all_goukei[-1][2].replace(",", ""))
@@ -77,68 +65,30 @@ def extract_totals_and_snippets(
             if m_sousai:
                 result["sousai"] = _to_int_amount(m_sousai.group(3))
 
-            words = target_page.extract_words()
-
-            # 左端: ＜工事代 計＞/＜相殺 計＞/合計 ラベルの最も左
-            left_x = None
-            for w in words:
-                if '工事代' in w['text'] or '相殺' in w['text'] or w['text'] == '合計':
-                    if left_x is None or w['x0'] < left_x:
-                        left_x = w['x0']
-            left_x = max(0.0, (left_x or 230.0) - 6)
-
-            def _save_crop(top: float, bottom: float, out_path: str):
-                try:
-                    cropped = target_page.crop((left_x, top, target_page.width, bottom))
-                    img = cropped.to_image(resolution=300)
-                    img.save(out_path, format="PNG")
-                    return out_path
-                except Exception as e:
-                    print(f"  [スニペット生成] エラー: {e}")
-                    return None
-
-            # 振込金額スニペット: 「＜工事代 計＞」行 〜 「合計」行（包含）
-            if furikomi_snippet_path:
-                top_y = None
-                bottom_y = None
+            if snippet_out_path:
+                words = target_page.extract_words()
+                top_y = bottom_y = None
+                left_x = None
                 for w in words:
                     if '工事代' in w['text']:
                         top_y = w['top'] - 4
                     if w['text'] == '合計' and bottom_y is None:
                         bottom_y = w['bottom'] + 4
+                    if '工事代' in w['text'] or '相殺' in w['text'] or w['text'] == '合計':
+                        if left_x is None or w['x0'] < left_x:
+                            left_x = w['x0']
+                left_x = max(0.0, (left_x or 230.0) - 6)
                 if top_y is not None and bottom_y is not None and bottom_y > top_y:
-                    result["furikomi_snippet"] = _save_crop(top_y, bottom_y, furikomi_snippet_path)
-
-            # 税込相殺スニペット: 「退職年金掛金」行 〜 「＜相殺 計＞」行
-            if sousai_snippet_path:
-                top_y = None
-                bottom_y = None
-                for w in words:
-                    if ('退職年金' in w['text'] or '対象外' in w['text']) and top_y is None:
-                        top_y = w['top'] - 4
-                    if '相殺' in w['text']:
-                        bottom_y = w['bottom'] + 4
-                # フォールバック: 工事代計〜相殺計
-                if top_y is None:
-                    for w in words:
-                        if '工事代' in w['text']:
-                            top_y = w['top'] - 4
-                            break
-                if top_y is not None and bottom_y is not None and bottom_y > top_y:
-                    result["sousai_snippet"] = _save_crop(top_y, bottom_y, sousai_snippet_path)
+                    try:
+                        cropped = target_page.crop((left_x, top_y, target_page.width, bottom_y))
+                        img = cropped.to_image(resolution=300)
+                        img.save(snippet_out_path, format="PNG")
+                        result["snippet_path"] = snippet_out_path
+                    except Exception as e:
+                        print(f"  [スニペット生成] エラー: {e}")
     except Exception as e:
         print(f"  [合計抽出] エラー: {e}")
     return result
-
-
-# 互換のため旧関数名も残す
-def extract_totals_and_snippet(pdf_path: str, snippet_out_path: Optional[str] = None) -> dict:
-    r = extract_totals_and_snippets(pdf_path, snippet_out_path, None)
-    return {
-        "furikomi": r.get("furikomi"),
-        "sousai": r.get("sousai"),
-        "snippet_path": r.get("furikomi_snippet"),
-    }
 
 
 def extract_with_pdfplumber(pdf_path: str) -> dict | None:
