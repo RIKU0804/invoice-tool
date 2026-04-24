@@ -426,6 +426,31 @@ class App(ctk.CTk):
             messagebox.showerror("エラー", "出力先フォルダを選択してください")
             return
 
+        # 上書き確認: 既存年次ファイルの該当月シートにデータがあれば確認
+        yearly_path = Path(out_dir) / f"集計用_{self.year_var.get()}年.xlsx"
+        target_month = f"{self.month_var.get()}月"
+        if yearly_path.exists():
+            try:
+                from openpyxl import load_workbook as _lwb
+                wb_chk = _lwb(yearly_path, read_only=True)
+                if target_month in wb_chk.sheetnames:
+                    ws_chk = wb_chk[target_month]
+                    has_data = any(
+                        ws_chk[f'B{r}'].value not in (None, '')
+                        for r in range(5, 32)
+                    )
+                    wb_chk.close()
+                    if has_data:
+                        ok = messagebox.askyesno(
+                            "上書き確認",
+                            f"{self.year_var.get()}年 {target_month} のデータは既に入力済みです。\n\n"
+                            "上書きしますか？"
+                        )
+                        if not ok:
+                            return
+            except Exception:
+                pass
+
         furikomi_raw = self.furikomi_var.get().strip().replace(",", "")
         if furikomi_raw and not furikomi_raw.lstrip("-").isdigit():
             messagebox.showerror("入力エラー", f"振込金額は半角数字で入力してください: {furikomi_raw}")
@@ -454,7 +479,7 @@ class App(ctk.CTk):
             from plumber_extractor import extract_with_pdfplumber, extract_payment_date
             from excel_writer import classify_and_aggregate, write_to_template
 
-            out_path = Path(out_dir) / f"集計用_{sheet}.xlsx"
+            out_path = Path(out_dir) / f"集計用_{self.year_var.get()}年.xlsx"
 
             self._log("[Step 1] PDFから明細を抽出 (pdfplumber)")
             plumber_result = extract_with_pdfplumber(pdf_path)

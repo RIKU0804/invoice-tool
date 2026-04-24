@@ -123,7 +123,10 @@ def write_to_template(
     if n_tei > MAX_TEI:
         raise ValueError(f"邸数が{MAX_TEI}を超えています: {n_tei}邸")
 
-    wb = load_workbook(template_path)
+    # 年次ファイル運用: output_path に既存ファイルがあればそれを、なければテンプレート
+    import os as _os
+    base_path = output_path if _os.path.exists(output_path) else template_path
+    wb = load_workbook(base_path)
 
     # 年抽出: "2026年4月" → "2026"
     m_year = re.search(r'(\d{4})年', sheet_name)
