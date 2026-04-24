@@ -63,7 +63,7 @@ class App(ctk.CTk):
         super().__init__()
         self.settings = _load_settings()
         self.title(f"PDF 明細抽出  v{VERSION}")
-        self.geometry("760x720")
+        self.geometry("980x720")
         self.resizable(False, False)
         self._build_ui()
         self._center_window()
@@ -196,7 +196,7 @@ class App(ctk.CTk):
 
     def _center_window(self):
         self.update_idletasks()
-        w, h = 760, 720
+        w, h = 980, 720
         x = (self.winfo_screenwidth() - w) // 2
         y = (self.winfo_screenheight() - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
@@ -291,12 +291,19 @@ class App(ctk.CTk):
         ).grid(row=2, column=1, columnspan=4, padx=(0, 16), pady=(0, 12), sticky="w")
 
         # 右側: PDFスニペット画像（自動取得された値の根拠を視覚確認）
-        self.snippet_label = ctk.CTkLabel(frm_info, text="PDF抽出プレビュー\n（PDFを選択すると\nここに表示されます）",
-                                           width=220, height=80, text_color="gray",
-                                           fg_color=("gray90", "gray20"),
-                                           corner_radius=6)
-        self.snippet_label.grid(row=1, column=5, rowspan=2, padx=(0, 16), pady=(0, 12), sticky="nsew")
-        self._snippet_ctkimage = None  # GC対策でインスタンスに保持
+        # クリックで拡大表示
+        self.snippet_label = ctk.CTkLabel(
+            frm_info,
+            text="PDF抽出プレビュー\n（PDFを選択すると\nここに表示されます）",
+            width=440, height=140, text_color="gray",
+            fg_color=("gray90", "gray20"),
+            corner_radius=6,
+            cursor="hand2",
+        )
+        self.snippet_label.grid(row=1, column=5, rowspan=2, padx=(8, 16), pady=(0, 12), sticky="nsew")
+        self.snippet_label.bind("<Button-1>", lambda e: self._open_snippet_fullsize())
+        self._snippet_ctkimage = None
+        self._snippet_src_path: str | None = None
 
         # --- 処理開始ボタン ---
         self.run_btn = ctk.CTkButton(
@@ -368,18 +375,27 @@ class App(ctk.CTk):
     def _show_snippet(self, path: str):
         try:
             img = Image.open(path)
-            # 表示エリアに収まるようにリサイズ（最大幅220, 最大高さ80）
-            max_w, max_h = 220, 80
+            # 表示エリア最大幅430, 最大高さ130（クリックで拡大可能）
+            max_w, max_h = 430, 130
             w, h = img.size
             ratio = min(max_w / w, max_h / h)
             new_w = max(1, int(w * ratio))
             new_h = max(1, int(h * ratio))
-            img = img.resize((new_w, new_h), Image.LANCZOS)
-            ctki = ctk.CTkImage(light_image=img, dark_image=img, size=(new_w, new_h))
+            img_resized = img.resize((new_w, new_h), Image.LANCZOS)
+            ctki = ctk.CTkImage(light_image=img_resized, dark_image=img_resized, size=(new_w, new_h))
             self._snippet_ctkimage = ctki
+            self._snippet_src_path = path
             self.snippet_label.configure(image=ctki, text="")
         except Exception as e:
             self.snippet_label.configure(text=f"表示エラー\n{e}")
+
+    def _open_snippet_fullsize(self):
+        """スニペット画像をシステムデフォルトの画像ビューアーで拡大表示"""
+        if self._snippet_src_path and os.path.exists(self._snippet_src_path):
+            try:
+                os.startfile(self._snippet_src_path)
+            except Exception:
+                pass
 
     def _browse_out_dir(self):
         path = filedialog.askdirectory(title="出力先フォルダを選択")

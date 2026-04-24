@@ -74,7 +74,7 @@ def extract_totals_and_snippet(pdf_path: str, snippet_out_path: Optional[str] = 
                 if top_y is not None and bottom_y is not None and bottom_y > top_y:
                     try:
                         cropped = target_page.crop((0, top_y, target_page.width, bottom_y))
-                        img = cropped.to_image(resolution=200)
+                        img = cropped.to_image(resolution=300)
                         img.save(snippet_out_path, format="PNG")
                         result["snippet_path"] = snippet_out_path
                     except Exception as e:
