@@ -16,6 +16,7 @@ Excel反映モジュール
 """
 
 import datetime
+import re
 from typing import Optional
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
@@ -123,8 +124,27 @@ def write_to_template(
         raise ValueError(f"邸数が{MAX_TEI}を超えています: {n_tei}邸")
 
     wb = load_workbook(template_path)
-    ws = wb[wb.sheetnames[0]]
-    ws.title = sheet_name
+
+    # 年抽出: "2026年4月" → "2026"
+    m_year = re.search(r'(\d{4})年', sheet_name)
+    year_str = m_year.group(1) if m_year else ""
+
+    # 賞与シート名のプレースホルダ〇〇〇〇を年で置換
+    if year_str:
+        for sn in list(wb.sheetnames):
+            if '〇〇〇〇' in sn:
+                wb[sn].title = sn.replace('〇〇〇〇', year_str)
+
+    # sheet_name "2026年4月" → 月シート "4月" を探す（賞与シート参照を壊さないため月シートはリネームしない）
+    m_month = re.search(r'(\d{1,2})月', sheet_name)
+    target_sheet_name = f"{m_month.group(1)}月" if m_month else sheet_name
+    if target_sheet_name not in wb.sheetnames:
+        # 単一テンプレ時代の後方互換: 先頭シートを使ってリネーム
+        ws = wb[wb.sheetnames[0]]
+        ws.title = sheet_name
+    else:
+        ws = wb[target_sheet_name]
+        # 月シートの名前は保持（"4月"のまま）
 
     # 全mergeを解除（read-only エラー回避）
     for m in list(ws.merged_cells.ranges):
