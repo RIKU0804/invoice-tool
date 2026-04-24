@@ -262,8 +262,8 @@ class App(ctk.CTk):
         )
         self.year_var = ctk.StringVar(value=str(_now.year))
         self.month_var = ctk.StringVar(value=str(_now.month))
-        # 年は現在から ±5年 (合計11年) に絞る。必要なら手入力可能
-        years = [str(y) for y in range(_now.year - 5, _now.year + 6)]
+        # 年は現在から ±1年 (合計3年)
+        years = [str(y) for y in range(_now.year - 1, _now.year + 2)]
         months = [str(m) for m in range(1, 13)]
         ctk.CTkOptionMenu(frm_info, variable=self.year_var, values=years, width=80).grid(
             row=0, column=1, padx=(0, 4), pady=12, sticky="w"
