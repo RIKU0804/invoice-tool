@@ -8,6 +8,21 @@ pdfplumber 抽出モジュール
 
 import pdfplumber
 import re
+from typing import Optional
+
+
+def extract_payment_date(pdf_path: str) -> Optional[str]:
+    """PDFから「支払日」行を検出して "YYYY年MM月DD日" 形式で返す"""
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                m = re.search(r'支払日\s*(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日', text)
+                if m:
+                    return f"{m.group(1)}年{m.group(2).zfill(2)}月{m.group(3).zfill(2)}日"
+    except Exception as e:
+        print(f"  [支払日抽出] エラー: {e}")
+    return None
 
 
 def extract_with_pdfplumber(pdf_path: str) -> dict | None:

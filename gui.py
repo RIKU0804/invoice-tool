@@ -386,6 +386,7 @@ class App(ctk.CTk):
             from pdf_converter import pdf_to_jpegs, cleanup_temp_jpegs
             from orchestrator import run_parallel_extraction, select_final_result
             from excel_writer import classify_and_aggregate, write_to_template
+            from plumber_extractor import extract_payment_date
 
             if not CONFIG.get("openrouter_api_key"):
                 raise RuntimeError(
@@ -430,6 +431,11 @@ class App(ctk.CTk):
             aggregated = classify_and_aggregate(final["rows"])
             self._log(f"  集計後の邸数: {len(aggregated)}")
 
+            # PDFから支払日を抽出（テキストPDFのみ。失敗時はNone）
+            payment_date = extract_payment_date(pdf_path)
+            if payment_date:
+                self._log(f"  支払日: {payment_date}")
+
             self._log("[Step 5] Excel に書き込み")
             write_to_template(
                 template_path=tpl_path,
@@ -439,6 +445,7 @@ class App(ctk.CTk):
                 furikomi_kingaku=furikomi,
                 pdf_koujidai_zeikomi=None,
                 pdf_sousai_zeikomi=sousai if sousai != 0 else None,
+                payment_date=payment_date,
             )
 
             self._log(f"\n✅ 完了: {out_path}")

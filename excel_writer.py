@@ -112,6 +112,7 @@ def write_to_template(
     furikomi_kingaku: Optional[int] = None,
     pdf_koujidai_zeikomi: Optional[int] = None,
     pdf_sousai_zeikomi: Optional[int] = None,
+    payment_date: Optional[str] = None,
 ):
     """集計用テンプレートに書き込む。邸数に応じて動的に行挿入する。"""
     n_tei = len(aggregated)
@@ -180,6 +181,10 @@ def write_to_template(
 
     # タイトル
     ws['C2'] = f'{sheet_name}　着工=受注　ベース'
+
+    # 支払日 (PDFから抽出) を K1 に表示。既存の"YYYY/MM/DD 更新"は上書き
+    if payment_date:
+        ws['K1'] = f'支払日: {payment_date}'
 
     # 旧レイアウトの注釈セル(K27:L27)をクリア（挿入+スペーサー削除でシフト）
     note_row = (26 + extra) if extra > 0 else 27
