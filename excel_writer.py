@@ -119,21 +119,23 @@ def write_to_template(
     if n_tei > MAX_TEI:
         raise ValueError(f"邸数が{MAX_TEI}を超えています: {n_tei}邸")
 
-    extra = max(0, n_tei - DEFAULT_DATA_ROWS)
-
     wb = load_workbook(template_path)
     ws = wb[wb.sheetnames[0]]
     ws.title = sheet_name
 
-    # 行挿入・書き込みがmergeに当たると read-only エラーで止まるため、
-    # シートの全mergeを解除する（元テンプレの装飾merge含む）
+    # 全mergeを解除（read-only エラー回避）
     for m in list(ws.merged_cells.ranges):
         ws.unmerge_cells(str(m))
 
-    # 邸数が18超 → 行23の前に extra 行を挿入 + 書式を行22からコピー
-    # その後、元の空白行(スペーサー)を削除して合計行が直下に来るようにする
-    if extra > 0:
+    # 合計行を常に 5+n_tei 行に統一（邸数に関わらずデータ行の直下）
+    # 元テンプレ配置: data 5-22, spacer 23, 合計 24
+    # n_tei=18: 合計を行23に → 行23(スペーサー)削除
+    # n_tei<18: 余り行+スペーサー削除
+    # n_tei>18: 行挿入+元スペーサー削除
+    if n_tei > DEFAULT_DATA_ROWS:
+        extra = n_tei - DEFAULT_DATA_ROWS
         ws.insert_rows(23, amount=extra)
+        # 行22の書式をコピー
         src_row = 22
         src_height = ws.row_dimensions[src_row].height
         for new_r in range(23, 23 + extra):
@@ -152,31 +154,26 @@ def write_to_template(
                     dst_cell.value = f'=ROUNDDOWN(D{new_r}-E{new_r}-F{new_r}-G{new_r}-H{new_r}-I{new_r},0)'
                 elif col_idx == 12:
                     dst_cell.value = f'=J{new_r}/D{new_r}'
-        # 元の空白スペーサー行(挿入後は 23+extra)を削除して、余分な空行を解消
+        # 元スペーサー(行23 が extra 分下にシフト)を削除
         ws.delete_rows(23 + extra, amount=1)
-        print(f"  [insert] {extra}行追加 + 元スペーサー削除 ({n_tei}邸対応)")
-
-    # 行番号ヘルパー（元スペーサー削除で1行詰まる想定）
-    # extra=0: 元のまま(data 5-22, spacer 23, sum 24)
-    # extra>0: data 5-(22+extra), sum (23+extra) ※スペーサー無し
-    data_last_row = 22 + extra
-    if extra > 0:
-        # スペーサー削除後、合計は23+extraに詰まる。以降も-1シフト
-        sum_row = 23 + extra
-        hancho_row_start = 28 + extra
-        furikomi_start = 36 + extra
+        print(f"  [insert] {extra}行追加+スペーサー削除 ({n_tei}邸)")
     else:
-        sum_row = 24
-        hancho_row_start = 29
-        furikomi_start = 37
+        # n_tei <= 18 → 余りデータ行+スペーサーを削除して合計を 5+n_tei に詰める
+        delete_count = 19 - n_tei  # 最小1(n=18の時)〜最大14(n=5の時)
+        if delete_count > 0:
+            ws.delete_rows(5 + n_tei, amount=delete_count)
+            print(f"  [delete] {delete_count}行削除 ({n_tei}邸)")
 
-    # 赤枠再描画（スペーサー削除で1行詰まる）
-    if extra > 0:
-        red_top = 28 + extra
-        red_bottom = 34 + extra
-    else:
-        red_top = 29
-        red_bottom = 35
+    # 行番号ヘルパー（合計行は常に 5 + n_tei）
+    data_last_row = 4 + n_tei
+    sum_row = 5 + n_tei
+    hancho_row_start = sum_row + 5      # 元24→29なので+5
+    furikomi_start = sum_row + 13       # 元24→37なので+13
+    extra = 0  # 後続のレガシーなオフセット計算を無効化
+
+    # 赤枠再描画（合計行=5+n_tei 基準、元テンプレB29:J35 → B(sum_row+5):J(sum_row+11)）
+    red_top = sum_row + 5
+    red_bottom = sum_row + 11
     _draw_red_border(ws, top=red_top, bottom=red_bottom, left=2, right=10)
 
     # タイトル
@@ -186,8 +183,8 @@ def write_to_template(
     if payment_date:
         ws['K1'] = f'支払日: {payment_date}'
 
-    # 旧レイアウトの注釈セル(K27:L27)をクリア（挿入+スペーサー削除でシフト）
-    note_row = (26 + extra) if extra > 0 else 27
+    # 旧レイアウトの注釈セル(K27:L27相当)をクリア（sum_row + 3）
+    note_row = sum_row + 3
     ws.cell(row=note_row, column=11).value = None
     ws.cell(row=note_row, column=12).value = None
 
@@ -202,16 +199,9 @@ def write_to_template(
     # 合計行の数式を挿入後の範囲で書き換え
     _rewrite_sum_row(ws, sum_row, data_last_row)
 
-    # 付帯数式（原材料経費合計・生産課支払）も行挿入で参照がズレるため書き換え
-    # 原テンプレ配置: I25=SUM(E5:I23), E26=SUM(E24:F24)
-    # extra=0: I25, E26 のまま
-    # extra>0: スペーサー削除で1行詰まるので I(24+extra), E(25+extra)
-    if extra > 0:
-        i_zairyo_row = 24 + extra
-        e_seisanka_row = 25 + extra
-    else:
-        i_zairyo_row = 25
-        e_seisanka_row = 26
+    # 付帯数式（原材料経費合計・生産課支払）: sum_row + 1, sum_row + 2
+    i_zairyo_row = sum_row + 1
+    e_seisanka_row = sum_row + 2
     ws[f'I{i_zairyo_row}'] = f'=SUM(E5:I{data_last_row})'
     ws[f'E{e_seisanka_row}'] = f'=SUM(E{sum_row}:F{sum_row})'
     # 「生産課 支払 "数値」のセルはMeiryo 20なので E+F マージで表示幅を確保
