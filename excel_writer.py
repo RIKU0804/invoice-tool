@@ -391,9 +391,9 @@ def _add_usability_features(ws, data_last_row: int, furikomi_start: int):
     # 班長名による配置と色分け
     _add_hancho_styling(ws, k_range)
 
-    # L列(粗利率)右揃え統一（右マージン確保のため indent=1）
+    # L列(粗利率)右揃え統一
     for r in range(5, data_last_row + 1):
-        ws[f'L{r}'].alignment = Alignment(horizontal='right', vertical='center', indent=1)
+        ws[f'L{r}'].alignment = Alignment(horizontal='right', vertical='center')
 
     # 担当邸数カウント(N3:O9) - 固定位置（挿入された行に影響されない想定）
     ws['N3'] = '【担当邸数】'
