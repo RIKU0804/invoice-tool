@@ -15,8 +15,6 @@ Excel反映モジュール
 邸数が18を超える場合、行23の前に行を挿入することで範囲を拡張する。
 """
 
-import datetime
-import re
 from typing import Optional
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
@@ -28,7 +26,7 @@ from copy import copy
 from collections import defaultdict
 
 
-DEFAULT_DATA_ROWS = 18  # テンプレ既定の明細行数(5-22)、合計は24行目
+DEFAULT_DATA_ROWS = 18  # テンプレ既定の明細行数(5-22)
 MAX_TEI = 50             # これ以上は明示的にエラー
 
 
@@ -123,21 +121,9 @@ def write_to_template(
     if n_tei > MAX_TEI:
         raise ValueError(f"邸数が{MAX_TEI}を超えています: {n_tei}邸")
 
-    # 既存の年次ファイルがあればそれを読み込み、なければテンプレから
-    import os as _os
-    base_path = output_path if _os.path.exists(output_path) else template_path
-    wb = load_workbook(base_path)
-
-    # sheet_name "2026年4月" から "4月" を抽出してそのシートを対象に
-    m_month = re.search(r'(\d{1,2})月', sheet_name)
-    target_sheet_name = f"{m_month.group(1)}月" if m_month else sheet_name
-    if target_sheet_name not in wb.sheetnames:
-        raise ValueError(
-            f"テンプレに '{target_sheet_name}' シートがありません。"
-            f"シート一覧: {wb.sheetnames}"
-        )
-    ws = wb[target_sheet_name]
-    # 注: シート名は"4月"のまま保持
+    wb = load_workbook(template_path)
+    ws = wb[wb.sheetnames[0]]
+    ws.title = sheet_name
 
     # 全mergeを解除（read-only エラー回避）
     for m in list(ws.merged_cells.ranges):
@@ -145,12 +131,13 @@ def write_to_template(
 
     # 合計行を常に 5+n_tei 行に統一（邸数に関わらずデータ行の直下）
     # 元テンプレ配置: data 5-22, spacer 23, 合計 24
-    # n_tei=18: スペーサー(23)だけ削除 → 合計が23に
-    # n_tei<18: 余りデータ行+スペーサー削除
+    # n_tei=18: 合計を行23に → 行23(スペーサー)削除
+    # n_tei<18: 余り行+スペーサー削除
     # n_tei>18: 行挿入+元スペーサー削除
     if n_tei > DEFAULT_DATA_ROWS:
         extra = n_tei - DEFAULT_DATA_ROWS
         ws.insert_rows(23, amount=extra)
+        # 行22の書式をコピー
         src_row = 22
         src_height = ws.row_dimensions[src_row].height
         for new_r in range(23, 23 + extra):
@@ -169,19 +156,22 @@ def write_to_template(
                     dst_cell.value = f'=ROUNDDOWN(D{new_r}-E{new_r}-F{new_r}-G{new_r}-H{new_r}-I{new_r},0)'
                 elif col_idx == 12:
                     dst_cell.value = f'=J{new_r}/D{new_r}'
+        # 元スペーサー(行23 が extra 分下にシフト)を削除
         ws.delete_rows(23 + extra, amount=1)
         print(f"  [insert] {extra}行追加+スペーサー削除 ({n_tei}邸)")
     else:
-        delete_count = 19 - n_tei
+        # n_tei <= 18 → 余りデータ行+スペーサーを削除して合計を 5+n_tei に詰める
+        delete_count = 19 - n_tei  # 最小1(n=18の時)〜最大14(n=5の時)
         if delete_count > 0:
             ws.delete_rows(5 + n_tei, amount=delete_count)
             print(f"  [delete] {delete_count}行削除 ({n_tei}邸)")
 
+    # 行番号ヘルパー（合計行は常に 5 + n_tei）
     data_last_row = 4 + n_tei
     sum_row = 5 + n_tei
-    hancho_row_start = sum_row + 5
-    furikomi_start = sum_row + 13
-    extra = 0
+    hancho_row_start = sum_row + 5      # 元24→29なので+5
+    furikomi_start = sum_row + 13       # 元24→37なので+13
+    extra = 0  # 後続のレガシーなオフセット計算を無効化
 
     # 赤枠再描画（合計行=5+n_tei 基準、元テンプレB29:J35 → B(sum_row+5):J(sum_row+11)）
     red_top = sum_row + 5
@@ -191,14 +181,9 @@ def write_to_template(
     # タイトル
     ws['C2'] = f'{sheet_name}　着工=受注　ベース'
 
-    # K1: 更新日（今日の日付）
-    today = datetime.date.today()
-    ws['K1'] = f'{today.year}/{today.month}/{today.day} 更新'
-    # K2: 支払日（PDFから抽出、無ければ空）
+    # 支払日 (PDFから抽出) を K1 に表示。既存の"YYYY/MM/DD 更新"は上書き
     if payment_date:
-        ws['K2'] = f'支払日: {payment_date}'
-    else:
-        ws['K2'] = None
+        ws['K1'] = f'支払日: {payment_date}'
 
     # 旧レイアウトの注釈セル(K27:L27相当)をクリア（sum_row + 3）
     note_row = sum_row + 3
