@@ -73,7 +73,15 @@ def extract_totals_and_snippet(pdf_path: str, snippet_out_path: Optional[str] = 
                         bottom_y = w['bottom'] + 4
                 if top_y is not None and bottom_y is not None and bottom_y > top_y:
                     try:
-                        cropped = target_page.crop((0, top_y, target_page.width, bottom_y))
+                        # 左側の邸名列は不要。＜工事代 計＞などラベル付近〜ページ右端までをクロップ
+                        # 合計ラベルや数値3列(税抜/消費税/税込)が見える範囲を対象にする
+                        left_x = None
+                        for w in words:
+                            if '工事代' in w['text'] or '相殺' in w['text']:
+                                if left_x is None or w['x0'] < left_x:
+                                    left_x = w['x0']
+                        left_x = max(0.0, (left_x or 230.0) - 6)
+                        cropped = target_page.crop((left_x, top_y, target_page.width, bottom_y))
                         img = cropped.to_image(resolution=300)
                         img.save(snippet_out_path, format="PNG")
                         result["snippet_path"] = snippet_out_path
