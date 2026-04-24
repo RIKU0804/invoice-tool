@@ -260,7 +260,7 @@ class App(ctk.CTk):
         )
         self.year_var = ctk.StringVar(value=str(_now.year))
         self.month_var = ctk.StringVar(value=str(_now.month))
-        years = [str(y) for y in range(_now.year - 1, _now.year + 3)]
+        years = [str(y) for y in range(2000, 2051)]
         months = [str(m) for m in range(1, 13)]
         ctk.CTkOptionMenu(frm_info, variable=self.year_var, values=years, width=80).grid(
             row=0, column=1, padx=(0, 4), pady=12, sticky="w"
