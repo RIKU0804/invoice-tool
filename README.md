@@ -1,145 +1,83 @@
-# 支払通知書 自動抽出ツール
+# invoice-tool
 
-内装工事会社の支払通知書（PDF）から明細を自動抽出し、
-集計用Excelテンプレートに反映するツール。
+支払通知書PDFから明細を自動抽出し、集計用Excelに反映するWindows GUIツール。
 
 ## 特徴
 
-- **並列処理**: pdfplumber と AIモデルを同時並行で実行
-- **テキストPDF優先**: pdfplumberで読めれば無料・高速でAI不使用
-- **AIフォールバック**: 画像PDFの場合はAIが自動で引き継ぎ
-- **拡張可能**: AIモデルを何個でも追加可能（クロスチェック対応）
-- **分類ルール自動適用**: 社保/生産課/材料費への振り分けまで自動
-- **自動アップデート**: GitHub Releases経由で新バージョンを自動取得
+- **pdfplumberでローカル抽出**: テキストPDFを完全オフラインで解析
+- **邸別自動集計**: 社保・生産課・材料費などの分類ルールを自動適用
+- **動的レイアウト**: 1〜50邸まで邸数に応じて行を自動伸縮
+- **振込金額/税込相殺の自動入力**: PDFから合計行を読み取り、根拠画像も視覚確認
+- **支払日の自動抽出**: ExcelのK1セルに自動記載
+- **自動アップデート**: GitHub Releases経由で新バージョンを自動検出・更新
 
-## アーキテクチャ
+## 処理フロー
 
 ```
-[input.pdf]
-   ↓
-[Step 0] アプリ起動時 → 自動更新チェック（新版あれば案内）
-   ↓
-[Step 1] PDF → JPEG (各ページを画像化)
-   ↓
-[Step 2] 並列実行
-   ├─ pdfplumber (テキストPDFなら成功)
-   ├─ Claude Opus 4.6 (画像PDFならこっち)
-   └─ （設定でAIモデル追加可能）
-   ↓
-[Step 3] 結果採用
-   ↓
-[Step 4] 分類ルール適用
-   ↓
-[Step 5] Excel新シートに書き込み
-   ↓
-[output.xlsx]
+[入力PDF]
+  ↓ pdfplumber
+[明細行の抽出]
+  ↓ 分類ルール
+[邸別集計 (D/E/F/G列)]
+  ↓
+[集計用.xlsx テンプレートに書き込み]
+  ↓
+[出力 Excel]
 ```
 
-## エンドユーザー向け：使い方
+## 開発者向け
 
-1. `invoice-tool.exe` をダブルクリック
-2. 新しいバージョンがある場合は案内が出る（「はい」で自動更新）
-3. 処理完了を待つ
-4. 出力Excelが生成される
-
-## 開発者向け：セットアップ
-
-### 1. Python依存関係のインストール
+### セットアップ
 
 ```bash
 pip install -r requirements.txt
+python gui.py
 ```
 
-### 2. OpenRouter APIキー取得
-
-1. https://openrouter.ai にサインアップ
-2. Keys メニューからAPIキー発行 (`sk-or-v1-xxx`)
-
-### 3. 設定ファイル編集
-
-`config.py` を開いてAPIキーを設定。
-
-### 4. 開発時実行
-
-```bash
-python main.py
-```
-
-### 5. ローカルビルド
+### ローカルビルド
 
 ```bash
 pip install pyinstaller
 pyinstaller invoice-tool.spec
-# → dist/invoice-tool.exe が生成される
+# → dist/invoice-tool.exe
 ```
 
-## AIモデルの追加/変更
-
-`config.py` の `models` リストを書き換えるだけ:
-
-```python
-# 1個モード（現在）
-"models": ["anthropic/claude-opus-4.6"],
-
-# 2個モード（クロスチェック）
-"models": [
-    "anthropic/claude-opus-4.6",
-    "google/gemini-3.1-pro-preview",
-],
-
-# 3個モード（多数決可能）
-"models": [
-    "anthropic/claude-opus-4.6",
-    "google/gemini-3.1-pro-preview",
-    "openai/gpt-5.4",
-],
-```
-
-## リリース手順
-
-`RELEASE_GUIDE.md` を参照。基本的には：
+### リリース
 
 ```bash
-# コード修正後
-# version.py の VERSION を上げる
+# version.py の VERSION を更新
 git add .
-git commit -m "fix: ..."
-git tag v1.0.1
-git push --tags
-# ↑ これだけで GitHub Actions が自動で .exe をビルド＆リリース
-# ↑ 山本さんのPCが次回起動時に自動更新
+git commit -m "fix: xxx"
+git tag v1.0.XX
+git push origin main
+git push origin v1.0.XX
+# → GitHub Actions が自動で invoice-tool.exe をビルド→Releases公開
+# → 既存ユーザーのアプリが次回起動時に自動更新検出
 ```
 
 ## ファイル構成
 
 ```
-pdf_extractor/
-├── main.py                        # エントリーポイント
-├── version.py                     # バージョン情報（リリース時に編集）
-├── config.py                      # 設定
-├── updater.py                     # 自動アップデート機能
-├── pdf_converter.py               # PDF → JPEG 変換
-├── plumber_extractor.py           # pdfplumber抽出（テキストPDF用）
-├── ai_extractor.py                # AI抽出（画像PDF用）
-├── orchestrator.py                # 並列実行 & 結果採用ロジック
-├── excel_writer.py                # Excel書き込み & 分類ルール
-├── requirements.txt               # Python依存関係
-├── invoice-tool.spec             # PyInstaller設定
-├── .github/
-│   └── workflows/
-│       └── build.yml              # GitHub Actions (自動ビルド)
-├── .gitignore
-├── README.md
-└── RELEASE_GUIDE.md               # リリース手順書（陸くん用）
+invoice-tool/
+├── gui.py                  # エントリーポイント (customtkinter GUI)
+├── version.py              # VERSION 定数
+├── config.py               # 分類ルール定義
+├── updater.py              # GitHub Releases チェック + 自動更新
+├── plumber_extractor.py    # pdfplumber 抽出 (明細/支払日/合計行)
+├── excel_writer.py         # 集計ロジック + Excel 書き込み
+├── requirements.txt
+├── invoice-tool.spec       # PyInstaller (onefile, UPX=False)
+├── template/
+│   └── 集計用.xlsx         # Excel テンプレート (exeにバンドル)
+└── .github/workflows/
+    └── build.yml           # タグpushで自動ビルド&リリース
 ```
 
-## 注意事項
+## システム要件
 
-- **AI APIの利用**: PDFの内容は一時的にOpenRouter経由でAIプロバイダーに送信されます。
-  - AIの学習には使われません（API利用規約による）
-  - 30日後にプロバイダー側で削除されます
-  - 機密情報が含まれる場合は事前に依頼者と合意を取ってください
-- **コスト**: Claude Opus 4.6 単体で1回あたり約45円。月1回なら年間500円程度。
-- **処理時間**: pdfplumber成功なら数秒、AI使用時は30秒〜1分程度。
-- **Windows向け**: 自動アップデート機能はWindowsのみ対応。Mac版は別途ビルドが必要。
+- Windows 10 (64bit) / Windows 11
+- テキストPDF（コピペ可能なPDF）
 
+## ライセンス
+
+Private project. Source is visible for auto-update distribution purposes.

@@ -1,3 +1,11 @@
+# 機密ファイル（顧客情報・業務データを含むため公開しない）
+CLAUDE.md
+山本さん向け使い方マニュアル.txt
+開発者向け内部仕様書.md
+gui_screenshot.png
+input/
+generate_test_pdfs.py
+
 # APIキー（絶対にコミットしない）
 _secret.py
 .env
