@@ -262,16 +262,19 @@ class App(ctk.CTk):
         )
         self.year_var = ctk.StringVar(value=str(_now.year))
         self.month_var = ctk.StringVar(value=str(_now.month))
-        # 年は現在から ±1年 (合計3年)
-        years = [str(y) for y in range(_now.year - 1, _now.year + 2)]
+        # 年: 2000〜2050 (51年)、月: 1〜12
+        # CTkComboBox は ttk.Combobox ベースでドロップダウンがスクロール可能
+        years = [str(y) for y in range(2000, 2051)]
         months = [str(m) for m in range(1, 13)]
-        ctk.CTkOptionMenu(frm_info, variable=self.year_var, values=years, width=80).grid(
-            row=0, column=1, padx=(0, 4), pady=12, sticky="w"
-        )
+        # 年: CTkComboBox (入力可+ドロップダウン)。Altなしでもキー入力で年を変更可能
+        ctk.CTkComboBox(
+            frm_info, variable=self.year_var, values=years, width=90
+        ).grid(row=0, column=1, padx=(0, 4), pady=12, sticky="w")
         ctk.CTkLabel(frm_info, text="年", anchor="w").grid(row=0, column=2, padx=(0, 8), pady=12)
-        ctk.CTkOptionMenu(frm_info, variable=self.month_var, values=months, width=64).grid(
-            row=0, column=3, padx=(0, 4), pady=12, sticky="w"
-        )
+        # 月は12個なのでOptionMenuでOK
+        ctk.CTkOptionMenu(
+            frm_info, variable=self.month_var, values=months, width=72
+        ).grid(row=0, column=3, padx=(0, 4), pady=12, sticky="w")
         ctk.CTkLabel(frm_info, text="月", anchor="w").grid(row=0, column=4, padx=(0, 8), pady=12)
 
         ctk.CTkLabel(frm_info, text="振込金額（税込）", width=110, anchor="w").grid(
