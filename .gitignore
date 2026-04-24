@@ -5,6 +5,7 @@ CLAUDE.md
 gui_screenshot.png
 input/
 generate_test_pdfs.py
+xlsx_to_png.py
 
 # APIキー（絶対にコミットしない）
 _secret.py
