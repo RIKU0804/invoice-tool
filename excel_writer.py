@@ -123,9 +123,21 @@ def write_to_template(
     if n_tei > MAX_TEI:
         raise ValueError(f"邸数が{MAX_TEI}を超えています: {n_tei}邸")
 
-    wb = load_workbook(template_path)
-    ws = wb[wb.sheetnames[0]]
-    ws.title = sheet_name
+    # 既存の年次ファイルがあればそれを読み込み、なければテンプレから
+    import os as _os
+    base_path = output_path if _os.path.exists(output_path) else template_path
+    wb = load_workbook(base_path)
+
+    # sheet_name "2026年4月" から "4月" を抽出してそのシートを対象に
+    m_month = re.search(r'(\d{1,2})月', sheet_name)
+    target_sheet_name = f"{m_month.group(1)}月" if m_month else sheet_name
+    if target_sheet_name not in wb.sheetnames:
+        raise ValueError(
+            f"テンプレに '{target_sheet_name}' シートがありません。"
+            f"シート一覧: {wb.sheetnames}"
+        )
+    ws = wb[target_sheet_name]
+    # 注: シート名は"4月"のまま保持
 
     # 全mergeを解除（read-only エラー回避）
     for m in list(ws.merged_cells.ranges):
