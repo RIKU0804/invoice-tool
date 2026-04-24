@@ -1,9 +1,8 @@
 """
 pdfplumber 抽出モジュール
 
-テキストPDFから表構造を直接抽出する。画像PDFでは失敗する（それが正常）。
-成功時：高速・無料・高精度
-失敗時：Noneを返し、呼び出し側でAI抽出にフォールバック
+テキストPDFから表構造を直接抽出する。
+画像PDFには対応しない方針。
 """
 
 import pdfplumber
@@ -115,8 +114,9 @@ def _parse_amount(s) -> int | None:
 
 
 if __name__ == "__main__":
-    from config import CONFIG
-    result = extract_with_pdfplumber(CONFIG["input_pdf"])
+    import sys
+    pdf = sys.argv[1] if len(sys.argv) > 1 else "input/支払通知書.pdf"
+    result = extract_with_pdfplumber(pdf)
     if result:
         print(f"抽出成功: {result['row_count']}行")
         for row in result['rows'][:3]:
