@@ -380,63 +380,33 @@ class App(ctk.CTk):
         ).start()
 
     def _run_extraction(self, pdf_path: str, tpl_path: str, sheet: str, furikomi, sousai: int, out_dir: str):
-        image_paths: list[str] = []
         try:
-            from config import CONFIG
-            from pdf_converter import pdf_to_jpegs, cleanup_temp_jpegs
-            from orchestrator import run_parallel_extraction, select_final_result
+            from plumber_extractor import extract_with_pdfplumber, extract_payment_date
             from excel_writer import classify_and_aggregate, write_to_template
-            from plumber_extractor import extract_payment_date
-
-            if not CONFIG.get("openrouter_api_key"):
-                raise RuntimeError(
-                    "OpenRouter APIキーが設定されていません。\n"
-                    "環境変数 OPENROUTER_API_KEY または .env ファイルを確認してください。"
-                )
 
             out_path = Path(out_dir) / f"集計用_{sheet}.xlsx"
 
-            self._log(f"[Step 1] PDF → JPEG 変換 (DPI={CONFIG['image_dpi']})")
-            image_paths = pdf_to_jpegs(
-                pdf_path, CONFIG["image_temp_dir"], CONFIG["image_dpi"], CONFIG["jpeg_quality"]
-            )
+            self._log("[Step 1] PDFから明細を抽出 (pdfplumber)")
+            plumber_result = extract_with_pdfplumber(pdf_path)
+            if not plumber_result or not plumber_result.get("rows"):
+                raise RuntimeError(
+                    "PDFから明細を抽出できませんでした。\n"
+                    "テキストPDF（コピペできるPDF）である必要があります。\n"
+                    "画像PDFには対応していません。"
+                )
+            rows = plumber_result["rows"]
+            self._log(f"  抽出行数: {len(rows)}")
 
-            self._log("[Step 2] pdfplumber & AI 並列抽出")
-            parallel_results = run_parallel_extraction(
-                pdf_path=pdf_path,
-                image_paths=image_paths,
-                models=CONFIG["models"],
-                api_key=CONFIG["openrouter_api_key"],
-                base_url=CONFIG["openrouter_base_url"],
-                run_plumber_parallel=CONFIG["run_pdfplumber_in_parallel"],
-                max_workers=CONFIG["max_workers"],
-            )
-            self._log(f"  成功ソース数: {parallel_results['n_successful_sources']}")
-
-            self._log("[Step 3] 結果採用")
-            final = select_final_result(
-                parallel_results,
-                tolerance=CONFIG["discrepancy_tolerance"],
-                strategy=CONFIG["voting_strategy"]
-            )
-            self._log(f"  採用ソース: {final['adopted_source']}")
-            self._log(f"  明細行数: {len(final['rows'])}")
-            if final["discrepancies"]:
-                self._log(f"  ⚠ 不一致: {len(final['discrepancies'])}件")
-
-            if not final["rows"]:
-                raise RuntimeError("データ抽出に失敗しました")
-
-            self._log("[Step 4] 邸別集計 & 分類ルール適用")
-            aggregated = classify_and_aggregate(final["rows"])
-            self._log(f"  集計後の邸数: {len(aggregated)}")
-
-            # PDFから支払日を抽出（テキストPDFのみ。失敗時はNone）
+            self._log("[Step 2] 支払日を抽出")
             payment_date = extract_payment_date(pdf_path)
             if payment_date:
                 self._log(f"  支払日: {payment_date}")
 
-            self._log("[Step 5] Excel に書き込み")
+            self._log("[Step 3] 邸別集計 & 分類ルール適用")
+            aggregated = classify_and_aggregate(rows)
+            self._log(f"  集計後の邸数: {len(aggregated)}")
+
+            self._log("[Step 4] Excel に書き込み")
             write_to_template(
                 template_path=tpl_path,
                 output_path=str(out_path),
@@ -452,7 +422,6 @@ class App(ctk.CTk):
             self.after(0, lambda: self._on_success(str(out_path)))
 
         except PermissionError as e:
-            # 出力ファイルがExcelで開きっぱなしの典型パターン
             err_path = getattr(e, "filename", "") or ""
             friendly = (
                 "出力ファイルに書き込めません。\n\n"
@@ -468,13 +437,6 @@ class App(ctk.CTk):
         except Exception as e:
             self._log(f"\n❌ エラー: {e}")
             self.after(0, self._on_error)
-        finally:
-            if image_paths:
-                try:
-                    from pdf_converter import cleanup_temp_jpegs
-                    cleanup_temp_jpegs(image_paths)
-                except Exception:
-                    pass
 
     def _on_success(self, out_path: str):
         self.progress.stop()

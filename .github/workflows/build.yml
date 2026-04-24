@@ -24,23 +24,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      - name: Inject obfuscated API key into _secret.py
-        shell: bash
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: |
-          python -c "
-          import base64, os
-          key_str = os.environ['OPENROUTER_API_KEY']
-          xor_key = b'shiharai-invoice-tool-2026-internal'
-          data = key_str.encode('utf-8')
-          obfuscated = bytes(b ^ xor_key[i % len(xor_key)] for i, b in enumerate(data))
-          blob = base64.b64encode(obfuscated).decode('ascii')
-          with open('_secret.py', 'w', encoding='utf-8') as f:
-              f.write(f'OPENROUTER_API_KEY_OBFUSCATED = \"{blob}\"\n')
-          print(f'wrote _secret.py (obfuscated, {len(blob)} chars)')
-          "
-
       - name: Build EXE
         run: pyinstaller invoice-tool.spec
 
