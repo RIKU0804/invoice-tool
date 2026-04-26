@@ -250,11 +250,14 @@ def write_to_template(
         pass
 
     # 担当者別集計(SUMIF) - 挿入後の行/範囲
+    # K列の班長名も明示的に書き込み(ドリフト済みファイルでも正しい位置に復元される)
     data_range_J = f"J5:J{data_last_row}"
     data_range_K = f"K5:K{data_last_row}"
-    ws.cell(row=hancho_row_start,     column=12, value=f'=SUMIF({data_range_K},K{hancho_row_start},{data_range_J})')
-    ws.cell(row=hancho_row_start + 1, column=12, value=f'=SUMIF({data_range_K},K{hancho_row_start + 1},{data_range_J})')
-    ws.cell(row=hancho_row_start + 2, column=12, value=f'=SUMIF({data_range_K},K{hancho_row_start + 2},{data_range_J})')
+    HANCHO_NAMES = ('山本', '熱田', '安保')
+    for i, name in enumerate(HANCHO_NAMES):
+        r = hancho_row_start + i
+        ws.cell(row=r, column=11, value=name)
+        ws.cell(row=r, column=12, value=f'=SUMIF({data_range_K},K{r},{data_range_J})')
 
     # 振込金額照合
     _write_furikomi_verification(
