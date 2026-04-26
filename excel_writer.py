@@ -233,15 +233,17 @@ def write_to_template(
         ws.cell(row=r, column=11).value = None
         ws.cell(row=r, column=12).value = None
     # (ii) ラベル配置(陸くん指定): 売上合計→C{sum_row}, 原材料経費合計→H{sum_row+1}, 利益→J{sum_row+1}
-    # 元テンプレ位置(C{sum_row+1}, E{sum_row+1}) のラベル残骸はクリアしてから新位置に書き込む
+    # 元テンプレ位置(C{sum_row+1}, E{sum_row+1}) のラベル残骸はクリア(値+塗り)してから新位置に書き込む
     label_row = sum_row + 1
-    _clear_if_label(ws, label_row, 3, '売上合計')             # 旧 C{sum_row+1}
-    _clear_if_label(ws, label_row, 5, '原材料　経費　合計')   # 旧 E{sum_row+1}
+    _clear_label_with_fill(ws, label_row, 3, '売上合計')             # 旧 C{sum_row+1}
+    _clear_label_with_fill(ws, label_row, 5, '原材料　経費　合計')   # 旧 E{sum_row+1}
     _restore_label_if_missing(ws, sum_row, 3, '売上合計')         # 新 C{sum_row}
     _restore_label_if_missing(ws, label_row, 8, '原材料　経費　合計')  # 新 H{sum_row+1}
     _restore_label_if_missing(ws, label_row, 10, '利益')          # J{sum_row+1} は据え置き
-    # H{sum_row+1} のフォントを Meiryo 17 に統一(陸くん指定)
-    ws.cell(row=label_row, column=8).font = Font(name='Meiryo', size=17)
+    # H{sum_row+1} の見栄え(陸くん指定): Meiryo 17 + 右寄せ(隣のI{sum_row+1}=SUM値とラベル-値ペア)
+    h_cell = ws.cell(row=label_row, column=8)
+    h_cell.font = Font(name='Meiryo', size=17)
+    h_cell.alignment = Alignment(horizontal='right', vertical='center')
 
     # C列赤塗りクリア（全データ行）
     no_fill = PatternFill(fill_type=None)
@@ -309,6 +311,17 @@ def _clear_if_label(ws, row: int, col: int, label: str):
     v = ws.cell(row=row, column=col).value
     if v == label:
         ws.cell(row=row, column=col).value = None
+
+
+def _clear_label_with_fill(ws, row: int, col: int, label: str):
+    """指定ラベルだったら値も塗り(背景色)も両方クリア。
+    旧位置に色付きセルが残るのを防ぐ。"""
+    cell = ws.cell(row=row, column=col)
+    if cell.value == label:
+        cell.value = None
+    # ラベル位置だったセル(値が空 or 元ラベルだったケース)の色塗りを除去
+    if cell.value is None:
+        cell.fill = PatternFill(fill_type=None)
 
 
 def _restore_label_if_missing(ws, row: int, col: int, label: str):
