@@ -240,6 +240,8 @@ def write_to_template(
     _restore_label_if_missing(ws, sum_row, 3, '売上合計')         # 新 C{sum_row}
     _restore_label_if_missing(ws, label_row, 8, '原材料　経費　合計')  # 新 H{sum_row+1}
     _restore_label_if_missing(ws, label_row, 10, '利益')          # J{sum_row+1} は据え置き
+    # H{sum_row+1} のフォントを Meiryo 17 に統一(陸くん指定)
+    ws.cell(row=label_row, column=8).font = Font(name='Meiryo', size=17)
 
     # C列赤塗りクリア（全データ行）
     no_fill = PatternFill(fill_type=None)
