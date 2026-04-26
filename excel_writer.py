@@ -244,7 +244,8 @@ def write_to_template(
     h_cell = ws.cell(row=label_row, column=8)
     h_cell.font = Font(name='Meiryo', size=17)
     h_cell.alignment = Alignment(horizontal='right', vertical='center')
-    h_cell.fill = PatternFill(start_color='FFFFCCCC', end_color='FFFFCCCC', fill_type='solid')
+    # 一つ上のセル(H{sum_row})と同じ塗り(陸くん指定: FFFDE9D9 薄ピーチ)
+    h_cell.fill = PatternFill(start_color='FFFDE9D9', end_color='FFFDE9D9', fill_type='solid')
 
     # C列赤塗りクリア（全データ行）
     no_fill = PatternFill(fill_type=None)
