@@ -228,12 +228,14 @@ def write_to_template(
     for r in range(sum_row + 3, hancho_row_start):
         ws.cell(row=r, column=11).value = None
         ws.cell(row=r, column=12).value = None
-    # (ii) i_zairyo_row(sum_row+1) のラベルを必ず復元
-    # ドリフトでSUM/数値に上書きされた場合や、ラベルが完全に失われた場合の両対応
+    # (ii) ラベル配置(陸くん指定): 売上合計→C{sum_row}, 原材料経費合計→H{sum_row+1}, 利益→J{sum_row+1}
+    # 元テンプレ位置(C{sum_row+1}, E{sum_row+1}) のラベル残骸はクリアしてから新位置に書き込む
     label_row = sum_row + 1
-    _restore_label_if_missing(ws, label_row, 3, '売上合計')
-    _restore_label_if_missing(ws, label_row, 5, '原材料　経費　合計')
-    _restore_label_if_missing(ws, label_row, 10, '利益')
+    _clear_if_label(ws, label_row, 3, '売上合計')             # 旧 C{sum_row+1}
+    _clear_if_label(ws, label_row, 5, '原材料　経費　合計')   # 旧 E{sum_row+1}
+    _restore_label_if_missing(ws, sum_row, 3, '売上合計')         # 新 C{sum_row}
+    _restore_label_if_missing(ws, label_row, 8, '原材料　経費　合計')  # 新 H{sum_row+1}
+    _restore_label_if_missing(ws, label_row, 10, '利益')          # J{sum_row+1} は据え置き
 
     # C列赤塗りクリア（全データ行）
     no_fill = PatternFill(fill_type=None)
@@ -280,6 +282,14 @@ def write_to_template(
         wb.save(output_path)
     finally:
         wb.close()
+
+
+def _clear_if_label(ws, row: int, col: int, label: str):
+    """指定セルが指定ラベル文字列だった場合のみクリア(他の値は触らない)。
+    ラベル位置を移動する時に旧位置をクリアする用途。"""
+    v = ws.cell(row=row, column=col).value
+    if v == label:
+        ws.cell(row=row, column=col).value = None
 
 
 def _restore_label_if_missing(ws, row: int, col: int, label: str):
