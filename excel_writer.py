@@ -240,10 +240,11 @@ def write_to_template(
     _restore_label_if_missing(ws, sum_row, 3, '売上合計')         # 新 C{sum_row}
     _restore_label_if_missing(ws, label_row, 8, '原材料　経費　合計')  # 新 H{sum_row+1}
     _restore_label_if_missing(ws, label_row, 10, '利益')          # J{sum_row+1} は据え置き
-    # H{sum_row+1} の見栄え(陸くん指定): Meiryo 17 + 右寄せ(隣のI{sum_row+1}=SUM値とラベル-値ペア)
+    # H{sum_row+1} の見栄え(陸くん指定): Meiryo 17 + 右寄せ + 赤塗り
     h_cell = ws.cell(row=label_row, column=8)
     h_cell.font = Font(name='Meiryo', size=17)
     h_cell.alignment = Alignment(horizontal='right', vertical='center')
+    h_cell.fill = PatternFill(start_color='FFFF0000', end_color='FFFF0000', fill_type='solid')
 
     # C列赤塗りクリア（全データ行）
     no_fill = PatternFill(fill_type=None)
