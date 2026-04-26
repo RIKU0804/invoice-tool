@@ -224,8 +224,12 @@ def write_to_template(
     for r in range(sum_row + 3, hancho_row_start):
         ws.cell(row=r, column=11).value = None
         ws.cell(row=r, column=12).value = None
-    # (ii) i_zairyo_row(sum_row+1) の E列に残った「生産課支払」SUM残骸
-    ws.cell(row=sum_row + 1, column=5).value = None
+    # (ii) i_zairyo_row(sum_row+1) のラベルを必ず復元
+    # ドリフトでSUM/数値に上書きされた場合や、ラベルが完全に失われた場合の両対応
+    label_row = sum_row + 1
+    _restore_label_if_missing(ws, label_row, 3, '売上合計')
+    _restore_label_if_missing(ws, label_row, 5, '原材料　経費　合計')
+    _restore_label_if_missing(ws, label_row, 10, '利益')
 
     # C列赤塗りクリア（全データ行）
     no_fill = PatternFill(fill_type=None)
@@ -272,6 +276,16 @@ def write_to_template(
         wb.save(output_path)
     finally:
         wb.close()
+
+
+def _restore_label_if_missing(ws, row: int, col: int, label: str):
+    """指定セルが空 or 数式 or 数値の場合、テキストラベルを復元する。
+    既に正しいテキストが入っている場合は何もしない(書式が壊れない)。"""
+    v = ws.cell(row=row, column=col).value
+    if v == label:
+        return
+    if not isinstance(v, str) or v.startswith('='):
+        ws.cell(row=row, column=col, value=label)
 
 
 def _detect_existing_sum_row(ws) -> int:
