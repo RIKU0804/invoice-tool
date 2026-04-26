@@ -154,41 +154,41 @@ def write_to_template(
         ws.unmerge_cells(str(m))
 
     # 合計行を常に 5+n_tei 行に統一（邸数に関わらずデータ行の直下）
-    # 元テンプレ配置: data 5-22, spacer 23, 合計 24
-    # n_tei=18: 合計を行23に → 行23(スペーサー)削除
-    # n_tei<18: 余り行+スペーサー削除
-    # n_tei>18: 行挿入+元スペーサー削除
-    if n_tei > DEFAULT_DATA_ROWS:
-        extra = n_tei - DEFAULT_DATA_ROWS
-        ws.insert_rows(23, amount=extra)
-        # 行22の書式をコピー
-        src_row = 22
-        src_height = ws.row_dimensions[src_row].height
-        for new_r in range(23, 23 + extra):
-            ws.row_dimensions[new_r].height = src_height
-            for col_idx in range(1, 15):
-                src_cell = ws.cell(row=src_row, column=col_idx)
-                dst_cell = ws.cell(row=new_r, column=col_idx)
-                if src_cell.has_style:
-                    dst_cell.font = copy(src_cell.font)
-                    dst_cell.border = copy(src_cell.border)
-                    dst_cell.fill = copy(src_cell.fill)
-                    dst_cell.number_format = src_cell.number_format
-                    dst_cell.alignment = copy(src_cell.alignment)
-                    dst_cell.protection = copy(src_cell.protection)
-                if col_idx == 10:
-                    dst_cell.value = f'=ROUNDDOWN(D{new_r}-E{new_r}-F{new_r}-G{new_r}-H{new_r}-I{new_r},0)'
-                elif col_idx == 12:
-                    dst_cell.value = f'=J{new_r}/D{new_r}'
-        # 元スペーサー(行23 が extra 分下にシフト)を削除
-        ws.delete_rows(23 + extra, amount=1)
-        print(f"  [insert] {extra}行追加+スペーサー削除 ({n_tei}邸)")
+    # 既存ファイル(年次運用)の上書き時に1行ずつドリフトするのを防ぐため、
+    # 「テンプレ配置(spacer+sum)」と「圧縮済み配置(sumのみ)」の両方を検出して
+    # 必要な差分だけ insert/delete する。
+    desired_sum_row = 5 + n_tei
+    existing_sum_row = _detect_existing_sum_row(ws)
+    has_spacer = _detect_spacer(ws, existing_sum_row)
+
+    if has_spacer:
+        # テンプレ状態(またはspacer残存): spacer+余分データ行を消して desired_sum_row に揃える
+        if desired_sum_row > existing_sum_row:
+            extra = desired_sum_row - existing_sum_row
+            ws.insert_rows(existing_sum_row - 1, amount=extra)
+            _copy_data_format(ws, src_row=existing_sum_row - 2,
+                              dst_rows=range(existing_sum_row - 1, existing_sum_row - 1 + extra))
+            ws.delete_rows(desired_sum_row - 1, amount=1)  # spacer
+            print(f"  [insert+spacer削除] +{extra}行 ({n_tei}邸, テンプレ状態)")
+        else:
+            # spacer + 余分データ行を削除(sum行は残して上にシフトさせる)
+            delete_count = existing_sum_row - desired_sum_row
+            if delete_count > 0:
+                ws.delete_rows(desired_sum_row, amount=delete_count)
+                print(f"  [delete] -{delete_count}行 ({n_tei}邸, テンプレ状態)")
     else:
-        # n_tei <= 18 → 余りデータ行+スペーサーを削除して合計を 5+n_tei に詰める
-        delete_count = 19 - n_tei  # 最小1(n=18の時)〜最大14(n=5の時)
-        if delete_count > 0:
-            ws.delete_rows(5 + n_tei, amount=delete_count)
-            print(f"  [delete] {delete_count}行削除 ({n_tei}邸)")
+        # 圧縮済み状態(既存output): 既存sum_rowからdesiredへの差分のみ
+        delta = desired_sum_row - existing_sum_row
+        if delta > 0:
+            ws.insert_rows(existing_sum_row, amount=delta)
+            _copy_data_format(ws, src_row=existing_sum_row - 1,
+                              dst_rows=range(existing_sum_row, existing_sum_row + delta))
+            print(f"  [insert] +{delta}行 ({n_tei}邸, 圧縮状態から拡張)")
+        elif delta < 0:
+            ws.delete_rows(desired_sum_row, amount=-delta)
+            print(f"  [delete] {delta}行 ({n_tei}邸, 圧縮状態から縮小)")
+        else:
+            print(f"  [no-op] レイアウト変更なし ({n_tei}邸, 既存と一致)")
 
     # 行番号ヘルパー（合計行は常に 5 + n_tei）
     data_last_row = 4 + n_tei
@@ -218,6 +218,14 @@ def write_to_template(
     note_row = sum_row + 3
     ws.cell(row=note_row, column=11).value = None
     ws.cell(row=note_row, column=12).value = None
+
+    # 過去の上書き運用で残った「ドリフト残骸」を掃除
+    # (i) hancho_row_start 直上 (sum_row+3 〜 sum_row+4) の K/L 残骸
+    for r in range(sum_row + 3, hancho_row_start):
+        ws.cell(row=r, column=11).value = None
+        ws.cell(row=r, column=12).value = None
+    # (ii) i_zairyo_row(sum_row+1) の E列に残った「生産課支払」SUM残骸
+    ws.cell(row=sum_row + 1, column=5).value = None
 
     # C列赤塗りクリア（全データ行）
     no_fill = PatternFill(fill_type=None)
@@ -261,6 +269,43 @@ def write_to_template(
         wb.save(output_path)
     finally:
         wb.close()
+
+
+def _detect_existing_sum_row(ws) -> int:
+    """既存シートの合計行(=SUM(D5:Dn) を含む行)を D列スキャンで検出。
+    見つからない場合は素のテンプレ想定で 24 を返す。"""
+    for r in range(5, 60):
+        v = ws.cell(row=r, column=4).value
+        if isinstance(v, str) and v.upper().startswith('=SUM(D5'):
+            return r
+    return 24
+
+
+def _detect_spacer(ws, sum_row: int) -> bool:
+    """合計行の直上が空(=spacer)かどうか判定。テンプレ状態 vs 圧縮済みの分岐用。"""
+    above = ws.cell(row=sum_row - 1, column=4).value
+    return above is None or above == ''
+
+
+def _copy_data_format(ws, src_row: int, dst_rows):
+    """データ行の書式を複製し、J列(粗利)/L列(粗利率)に行ごとの数式を埋め込む。"""
+    src_height = ws.row_dimensions[src_row].height
+    for new_r in dst_rows:
+        ws.row_dimensions[new_r].height = src_height
+        for col_idx in range(1, 15):
+            src_cell = ws.cell(row=src_row, column=col_idx)
+            dst_cell = ws.cell(row=new_r, column=col_idx)
+            if src_cell.has_style:
+                dst_cell.font = copy(src_cell.font)
+                dst_cell.border = copy(src_cell.border)
+                dst_cell.fill = copy(src_cell.fill)
+                dst_cell.number_format = src_cell.number_format
+                dst_cell.alignment = copy(src_cell.alignment)
+                dst_cell.protection = copy(src_cell.protection)
+            if col_idx == 10:
+                dst_cell.value = f'=ROUNDDOWN(D{new_r}-E{new_r}-F{new_r}-G{new_r}-H{new_r}-I{new_r},0)'
+            elif col_idx == 12:
+                dst_cell.value = f'=IFERROR(J{new_r}/D{new_r},"")'
 
 
 def _draw_red_border(ws, top: int, bottom: int, left: int, right: int):
@@ -318,7 +363,7 @@ def _rewrite_sum_row(ws, sum_row: int, data_last_row: int):
     j_terms = '+'.join(f'J{r}' for r in range(5, data_last_row + 1))
     ws[f'J{sum_row}'] = f'=ROUNDDOWN({j_terms},0)'
     # L: 粗利率
-    ws[f'L{sum_row}'] = f'=J{sum_row}/D{sum_row}'
+    ws[f'L{sum_row}'] = f'=IFERROR(J{sum_row}/D{sum_row},"")'
 
 
 def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: int):
@@ -332,8 +377,10 @@ def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: 
     r_sagaku = start_row + 6
     r_note = start_row + 7
 
-    # 新位置のみクリア（旧位置はテンプレ側で既に削除済み）
-    for r in range(r_header, r_note + 1):
+    # 新位置クリア + ヘッダ直上のドリフト残骸も掃除
+    # (上書き運用で B34/B35 等にヘッダ重複が出るのを防ぐ)
+    scrub_top = max(sum_row + 8, r_header - 6)
+    for r in range(scrub_top, r_note + 1):
         for c in range(2, 6):
             ws.cell(row=r, column=c).value = None
 
