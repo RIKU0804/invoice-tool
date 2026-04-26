@@ -132,11 +132,15 @@ def write_to_template(
     m_year = re.search(r'(\d{4})年', sheet_name)
     year_str = m_year.group(1) if m_year else ""
 
-    # 賞与シート名のプレースホルダ〇〇〇〇を年で置換
+    # 賞与シート名+セル内テキストのプレースホルダ〇〇〇〇を年で置換
+    # (シート名は前回ランで既に置換済みでも、セル内のB2タイトルなどは残ってるため毎回スキャン)
     if year_str:
         for sn in list(wb.sheetnames):
             if '〇〇〇〇' in sn:
                 wb[sn].title = sn.replace('〇〇〇〇', year_str)
+        for sn in wb.sheetnames:
+            if '夏' in sn or '冬' in sn or '賞与' in sn:
+                _replace_placeholder_in_cells(wb[sn], '〇〇〇〇', year_str)
 
     # sheet_name "2026年4月" → 月シート "4月" を探す（賞与シート参照を壊さないため月シートはリネームしない）
     m_month = re.search(r'(\d{1,2})月', sheet_name)
@@ -282,6 +286,19 @@ def write_to_template(
         wb.save(output_path)
     finally:
         wb.close()
+
+
+def _replace_placeholder_in_cells(ws, placeholder: str, replacement: str):
+    """シート全体のテキストセルから placeholder を replacement に置換。
+    マージセルやスタイルは触らない(値の中の文字列のみ書き換え)。"""
+    for row in ws.iter_rows():
+        for cell in row:
+            v = cell.value
+            if isinstance(v, str) and placeholder in v:
+                try:
+                    cell.value = v.replace(placeholder, replacement)
+                except (AttributeError, TypeError):
+                    pass  # MergedCell の slave 等は無視
 
 
 def _clear_if_label(ws, row: int, col: int, label: str):
