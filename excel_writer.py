@@ -163,15 +163,19 @@ def write_to_template(
 
     if has_spacer:
         # テンプレ状態(またはspacer残存): spacer+余分データ行を消して desired_sum_row に揃える
-        if desired_sum_row > existing_sum_row:
-            extra = desired_sum_row - existing_sum_row
-            ws.insert_rows(existing_sum_row - 1, amount=extra)
+        if desired_sum_row >= existing_sum_row:
+            # n_tei >= テンプレデータ行数: spacer手前にデータ行を挿入(spacerと同数+1)→ spacer削除
+            # n=19: insert 1 + delete 1 = net 0 (spacerをデータ行に変換するイメージ)
+            # n=20: insert 2 + delete 1 = net +1
+            insert_count = desired_sum_row - existing_sum_row + 1
+            ws.insert_rows(existing_sum_row - 1, amount=insert_count)
             _copy_data_format(ws, src_row=existing_sum_row - 2,
-                              dst_rows=range(existing_sum_row - 1, existing_sum_row - 1 + extra))
-            ws.delete_rows(desired_sum_row - 1, amount=1)  # spacer
-            print(f"  [insert+spacer削除] +{extra}行 ({n_tei}邸, テンプレ状態)")
+                              dst_rows=range(existing_sum_row - 1,
+                                             existing_sum_row - 1 + insert_count))
+            ws.delete_rows(desired_sum_row, amount=1)  # 挿入でズレたspacerを削除
+            print(f"  [insert+spacer変換] +{insert_count - 1}行 ({n_tei}邸, テンプレ状態)")
         else:
-            # spacer + 余分データ行を削除(sum行は残して上にシフトさせる)
+            # n_tei < テンプレデータ行数: 余分データ行+spacerを削除(sum行は残して上にシフトさせる)
             delete_count = existing_sum_row - desired_sum_row
             if delete_count > 0:
                 ws.delete_rows(desired_sum_row, amount=delete_count)
