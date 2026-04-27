@@ -60,6 +60,19 @@ def classify_and_aggregate(rows: list[dict]) -> list[dict]:
             print(f"  [skip] 金額パース失敗: 邸={tei} 金額={amount_raw!r}")
             continue
 
+        # 消費税対象外(立替金等)の行は集計から除外する(v1.1.3〜)
+        # 税抜=税込 かつ 消費税=0 の行のみ非課税扱い。
+        # 共通原価邸 でも「固定費・支払作業賃」など課税行は除外しない(混在対応)。
+        try:
+            shohizei = int(round(float(row.get("消費税", 0) or 0)))
+            zeikomi_val = int(round(float(row.get("税込金額", 0) or 0)))
+        except (TypeError, ValueError):
+            shohizei = 0
+            zeikomi_val = amount
+        if amount != 0 and shohizei == 0 and amount == zeikomi_val:
+            print(f"  [skip] 消費税対象外(立替金等): 邸={tei} 金額={amount} 工種={koushu} 備考={bikou!r}")
+            continue
+
         agg = by_tei[tei]
         agg["邸名"] = tei
         agg["契約NO"].add(row.get("契約NO", ""))
@@ -120,6 +133,7 @@ def write_to_template(
     furikomi_kingaku: Optional[int] = None,
     pdf_koujidai_zeikomi: Optional[int] = None,
     pdf_sousai_zeikomi: Optional[int] = None,
+    tatekae_total: int = 0,
     payment_date: Optional[str] = None,
 ):
     """集計用テンプレートに書き込む。邸数に応じて動的に行挿入する。"""
@@ -285,9 +299,9 @@ def write_to_template(
         ws.cell(row=r, column=11, value=name)
         ws.cell(row=r, column=12, value=f'=SUMIF({data_range_K},K{r},{data_range_J})')
 
-    # 振込金額照合
+    # 振込金額照合(立替金別表示版、v1.1.3〜)
     _write_furikomi_verification(
-        ws, furikomi_kingaku, pdf_sousai_zeikomi,
+        ws, furikomi_kingaku, pdf_sousai_zeikomi, tatekae_total,
         start_row=furikomi_start, sum_row=sum_row,
     )
 
@@ -437,25 +451,30 @@ def _rewrite_sum_row(ws, sum_row: int, data_last_row: int):
     ws[f'L{sum_row}'] = f'=IFERROR(J{sum_row}/D{sum_row},"")'
 
 
-def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: int):
-    """振込金額照合欄（税抜⇔税込の二重計算）"""
+def _write_furikomi_verification(ws, furikomi, sousai, tatekae_total, start_row: int, sum_row: int):
+    """振込金額照合欄(立替金別表示+インボイス差可視化、v1.1.3〜)
+
+    立替金(税抜=税込、消費税対象外)はD/E/F/Gから除外され、ここで別計上。
+    インボイス端数差(⑧)は立替金*(1-1/1.1)で構造的に発生する正常値として可視化。
+    """
     r_header = start_row
     r_furikomi = start_row + 1
     r_sousai = start_row + 2
     r_zeikomi_total = start_row + 3
-    r_zeinuki_calc = start_row + 4
-    r_excel_total = start_row + 5
-    r_sagaku = start_row + 6
-    r_note = start_row + 7
+    r_zeinuki_calc = start_row + 4         # ④ 税抜逆算(参考、PDF的計算)
+    r_excel_uriage = start_row + 5         # ⑤ Excel税抜売上(立替金除く)
+    r_tatekae = start_row + 6              # ⑥ 立替金(非課税)
+    r_excel_total = start_row + 7          # ⑦ Excel税抜合計 = ⑤+⑥
+    r_sagaku = start_row + 8               # ⑧ インボイス端数差 = ⑦-④
+    r_note = start_row + 9
 
-    # 新位置クリア + ヘッダ直上のドリフト残骸も掃除
-    # (上書き運用で B34/B35 等にヘッダ重複が出るのを防ぐ)
+    # ヘッダ直上のドリフト残骸 + 新位置クリア
     scrub_top = max(sum_row + 8, r_header - 6)
     for r in range(scrub_top, r_note + 1):
         for c in range(2, 6):
             ws.cell(row=r, column=c).value = None
 
-    ws.cell(row=r_header, column=2, value='【振込金額照合（税抜⇔税込の二重計算）】')
+    ws.cell(row=r_header, column=2, value='【振込金額照合(立替金別表示)】')
     ws.cell(row=r_header, column=2).font = copy(ws['C2'].font)
 
     ws.cell(row=r_furikomi, column=2, value='① 振込金額(税込)')
@@ -464,7 +483,6 @@ def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: 
     ws.cell(row=r_sousai, column=4, value=sousai if sousai is not None else None)
     ws.cell(row=r_zeikomi_total, column=2, value='③ 税込工事代計(① − ②)')
     ws.cell(row=r_zeikomi_total, column=4, value=f'=D{r_furikomi}-D{r_sousai}')
-    # ③ 行のboldを解除（テンプレ由来で太字になってるため）
     b_font = ws.cell(row=r_zeikomi_total, column=2).font
     d_font = ws.cell(row=r_zeikomi_total, column=4).font
     ws.cell(row=r_zeikomi_total, column=2).font = Font(
@@ -473,18 +491,22 @@ def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: 
     ws.cell(row=r_zeikomi_total, column=4).font = Font(
         name=d_font.name, size=d_font.size or 17, bold=False, color=d_font.color
     )
-    ws.cell(row=r_zeinuki_calc, column=2, value='④ 税抜逆算(③ ÷ 1.1)')
+    ws.cell(row=r_zeinuki_calc, column=2, value='④ 税抜逆算(参考、③ ÷ 1.1)')
     ws.cell(row=r_zeinuki_calc, column=4, value=f'=ROUND(D{r_zeikomi_total}/1.1,0)')
-    ws.cell(row=r_excel_total, column=2, value=f'⑤ Excel税抜合計(J{sum_row})')
-    ws.cell(row=r_excel_total, column=4, value=f'=J{sum_row}')
-    ws.cell(row=r_sagaku, column=2, value='⑥ 差額(⑤ − ④)')
+    ws.cell(row=r_excel_uriage, column=2, value=f'⑤ Excel税抜売上(立替金除く、J{sum_row})')
+    ws.cell(row=r_excel_uriage, column=4, value=f'=J{sum_row}')
+    ws.cell(row=r_tatekae, column=2, value='⑥ 立替金(非課税、税抜=税込)')
+    ws.cell(row=r_tatekae, column=4, value=tatekae_total if tatekae_total else 0)
+    ws.cell(row=r_excel_total, column=2, value='⑦ Excel税抜合計(⑤ + ⑥)')
+    ws.cell(row=r_excel_total, column=4, value=f'=D{r_excel_uriage}+D{r_tatekae}')
+    ws.cell(row=r_sagaku, column=2, value='⑧ インボイス端数差(⑦ − ④)')
     ws.cell(row=r_sagaku, column=4, value=f'=D{r_excel_total}-D{r_zeinuki_calc}')
-    ws.cell(row=r_note, column=2, value='※ ±数円→インボイス端数差(正常) / 大きな差→PDF読取エラーの可能性')
+    ws.cell(row=r_note, column=2, value='※ ⑦が会計的に正しい税抜合計。⑧は立替金を1.1で割るPDF集計のクセで発生(立替金*9.09%≒正常)')
 
-    for r in [r_furikomi, r_sousai, r_zeikomi_total, r_zeinuki_calc, r_excel_total, r_sagaku]:
+    for r in [r_furikomi, r_sousai, r_zeikomi_total, r_zeinuki_calc,
+              r_excel_uriage, r_tatekae, r_excel_total, r_sagaku]:
         ws.cell(row=r, column=4).number_format = '#,##0;[Red]▲#,##0'
 
-    # ⑥差額 行は他の振込金額照合行と同じサイズ(17)、太字にしない
     ws.cell(row=r_sagaku, column=2).font = Font(
         name=ws.cell(row=r_furikomi, column=2).font.name, size=17, bold=False
     )
@@ -510,15 +532,16 @@ def _add_usability_features(ws, data_last_row: int, furikomi_start: int):
     # 既存の条件付き書式をリセット（過去ルールが挿入で壊れている可能性があるため）
     ws.conditional_formatting = ConditionalFormattingList()
 
-    # 差額赤/緑 (D{sagaku_row})
-    sagaku_row = furikomi_start + 6  # ⑥ 差額 の行
+    # インボイス端数差(⑧)は立替金*(1-1/1.1)で必ず発生する正常値なので
+    # 大きな誤差(立替金規模を超える=100,000円以上)の時だけ赤、それ以下は青系
+    sagaku_row = furikomi_start + 8  # ⑧ インボイス端数差 の行
     red_fill = PatternFill(start_color='FFCCCC', end_color='FFCCCC', fill_type='solid')
-    green_fill = PatternFill(start_color='D5F5E3', end_color='D5F5E3', fill_type='solid')
+    light_blue = PatternFill(start_color='E1F5FE', end_color='E1F5FE', fill_type='solid')
     ws.conditional_formatting.add(
-        f'D{sagaku_row}', FormulaRule(formula=[f'ABS(D{sagaku_row})>10'], fill=red_fill)
+        f'D{sagaku_row}', FormulaRule(formula=[f'ABS(D{sagaku_row})>100000'], fill=red_fill)
     )
     ws.conditional_formatting.add(
-        f'D{sagaku_row}', FormulaRule(formula=[f'AND(ABS(D{sagaku_row})<=10,D{sagaku_row}<>"")'], fill=green_fill)
+        f'D{sagaku_row}', FormulaRule(formula=[f'AND(ABS(D{sagaku_row})<=100000,D{sagaku_row}<>"")'], fill=light_blue)
     )
 
     # 班長未入力黄色
