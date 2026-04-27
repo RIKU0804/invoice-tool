@@ -498,15 +498,6 @@ class App(ctk.CTk):
             aggregated = classify_and_aggregate(rows)
             self._log(f"  集計後の邸数: {len(aggregated)}")
 
-            # 税込合計を計算(明細行の税込金額の和、相殺/集計行は除外)
-            excel_zeikomi_total = 0
-            for r in rows:
-                tei = r.get("邸名", "") or ""
-                if not tei or tei in ("計", "合計") or "消費税" in tei or "対象外" in tei:
-                    continue
-                excel_zeikomi_total += r.get("税込金額", 0) or 0
-            self._log(f"  Excel税込合計: {excel_zeikomi_total:,}")
-
             self._log("[Step 4] Excel に書き込み")
             write_to_template(
                 template_path=tpl_path,
@@ -516,7 +507,6 @@ class App(ctk.CTk):
                 furikomi_kingaku=furikomi,
                 pdf_koujidai_zeikomi=None,
                 pdf_sousai_zeikomi=sousai if sousai != 0 else None,
-                excel_zeikomi_total=excel_zeikomi_total,
                 payment_date=payment_date,
             )
 
