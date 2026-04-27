@@ -68,10 +68,10 @@ def classify_and_aggregate(rows: list[dict]) -> list[dict]:
         if base_name:
             agg["工事名称"].add(base_name)
 
-        # 緩和マッチ(v1.0.97〜): pdfplumberのPDFテーブル抽出が「生産課中口分」を
-        # 「生産課」(別行に流される) と「中口分」(備考列に残る) に分割するケース
-        # に対応するため、「生産課」または「中口分」のどちらかでマッチ
-        is_seisanka = ("生産課" in bikou) or ("中口分" in bikou)
+        # 緩和マッチ(v1.0.98〜): 「中口応援分」等のバリエーションも生産課扱い
+        # pdfplumberが「生産課中口分」を「生産課」と「中口分」に分割するケース対応 +
+        # 「中口応援分」など中口プレフィックスを生産課判定に含める(山本さん指示)
+        is_seisanka = ("生産課" in bikou) or ("中口" in bikou)
         is_shaho = "社保" in koushu
 
         if amount >= 0:
