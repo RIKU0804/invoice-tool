@@ -68,7 +68,9 @@ def classify_and_aggregate(rows: list[dict]) -> list[dict]:
         if base_name:
             agg["工事名称"].add(base_name)
 
-        is_seisanka = "生産課中口分" in bikou
+        # 緩和マッチ(v1.0.96〜): PDF文字認識ゆれ(中ロ分/中囗分/空白混入等)に対応するため
+        # 「生産課中口分」厳密一致から「生産課」を含むだけでマッチに変更
+        is_seisanka = "生産課" in bikou
         is_shaho = "社保" in koushu
 
         if amount >= 0:
@@ -77,10 +79,13 @@ def classify_and_aggregate(rows: list[dict]) -> list[dict]:
             abs_amount = abs(amount)
             if is_seisanka and is_shaho:
                 agg["E"] += abs_amount
+                print(f"  [classify] E(社保): 邸={tei} 金額={amount} 工種={koushu} 備考={bikou!r}")
             elif is_seisanka:
                 agg["F"] += abs_amount
+                print(f"  [classify] F(生産課): 邸={tei} 金額={amount} 工種={koushu} 備考={bikou!r}")
             else:
                 agg["G_items"].append(abs_amount)
+                print(f"  [classify] G(材料費): 邸={tei} 金額={amount} 工種={koushu} 備考={bikou!r}")
 
     result = []
     for tei, agg in by_tei.items():
