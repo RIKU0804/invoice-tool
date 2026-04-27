@@ -439,30 +439,29 @@ def _rewrite_sum_row(ws, sum_row: int, data_last_row: int):
 
 
 def _write_furikomi_verification(ws, furikomi, sousai, excel_zeikomi, start_row: int, sum_row: int):
-    """振込金額照合欄(税込ベース、v1.0.99〜)
-    PDFが税込合計から税抜を逆算する仕組みのため、税抜比較だと立替金等の
-    非課税行で数千円ズレる構造的問題があった。税込ベースなら完全一致するので
-    データ抽出の正確性を直接確認できる。
+    """振込金額照合欄 ハイブリッド版(税込整合性チェック + 税抜参考併記、v1.0.100〜)
+
+    税込ベースの差額(⑤): データ抽出の正確性を直接確認(常に0であるべき)
+    税抜参考(⑥-⑧): インボイス端数差を参考表示(立替金等で数千円ズレるが正常)
     """
     r_header = start_row
     r_furikomi = start_row + 1
     r_sousai = start_row + 2
     r_zeikomi_total = start_row + 3
-    r_excel_zeikomi = start_row + 4   # Excel税込合計(各行税込の和)
-    r_sagaku = start_row + 5
-    r_note = start_row + 6
-    # 旧レイアウトでは8行使ってた(税抜逆算+税抜合計の2行を削減)。+7行目以降の
-    # 残骸セルもクリアする必要がある
-    r_legacy_end = start_row + 7
+    r_excel_zeikomi = start_row + 4   # ④ Excel税込合計
+    r_sagaku = start_row + 5            # ⑤ 差額(税込) = データ整合性
+    r_zeinuki_calc = start_row + 6      # ⑥ 税抜逆算(参考)
+    r_excel_zeinuki = start_row + 7     # ⑦ Excel税抜合計(J{sum_row})
+    r_invoice_diff = start_row + 8      # ⑧ インボイス端数差(⑦-⑥、立替金等で発生する正常な誤差)
+    r_note = start_row + 9
 
-    # 新位置クリア + ヘッダ直上のドリフト残骸も掃除
-    # (上書き運用で B34/B35 等にヘッダ重複が出るのを防ぐ)
+    # ヘッダ直上のドリフト残骸 + 新位置クリア
     scrub_top = max(sum_row + 8, r_header - 6)
-    for r in range(scrub_top, r_legacy_end + 1):
+    for r in range(scrub_top, r_note + 1):
         for c in range(2, 6):
             ws.cell(row=r, column=c).value = None
 
-    ws.cell(row=r_header, column=2, value='【振込金額照合(税込ベース)】')
+    ws.cell(row=r_header, column=2, value='【振込金額照合(税込整合性 + 税抜参考)】')
     ws.cell(row=r_header, column=2).font = copy(ws['C2'].font)
 
     ws.cell(row=r_furikomi, column=2, value='① 振込金額(税込)')
@@ -471,7 +470,7 @@ def _write_furikomi_verification(ws, furikomi, sousai, excel_zeikomi, start_row:
     ws.cell(row=r_sousai, column=4, value=sousai if sousai is not None else None)
     ws.cell(row=r_zeikomi_total, column=2, value='③ 税込工事代計(① − ②)')
     ws.cell(row=r_zeikomi_total, column=4, value=f'=D{r_furikomi}-D{r_sousai}')
-    # ③ 行のboldを解除(テンプレ由来で太字になってるため)
+    # ③ 行のboldを解除
     b_font = ws.cell(row=r_zeikomi_total, column=2).font
     d_font = ws.cell(row=r_zeikomi_total, column=4).font
     ws.cell(row=r_zeikomi_total, column=2).font = Font(
@@ -482,20 +481,33 @@ def _write_furikomi_verification(ws, furikomi, sousai, excel_zeikomi, start_row:
     )
     ws.cell(row=r_excel_zeikomi, column=2, value='④ Excel税込合計(各行税込の和)')
     ws.cell(row=r_excel_zeikomi, column=4, value=excel_zeikomi if excel_zeikomi is not None else None)
-    ws.cell(row=r_sagaku, column=2, value='⑤ 差額(④ − ③)')
+    ws.cell(row=r_sagaku, column=2, value='⑤ 差額(④ − ③) — データ整合性')
     ws.cell(row=r_sagaku, column=4, value=f'=D{r_excel_zeikomi}-D{r_zeikomi_total}')
-    ws.cell(row=r_note, column=2, value='※ 0円 → データ抽出は正確 / 大きな差 → PDF読取エラーの可能性')
+    ws.cell(row=r_zeinuki_calc, column=2, value='⑥ 税抜逆算(参考、③ ÷ 1.1)')
+    ws.cell(row=r_zeinuki_calc, column=4, value=f'=ROUND(D{r_zeikomi_total}/1.1,0)')
+    ws.cell(row=r_excel_zeinuki, column=2, value=f'⑦ Excel税抜合計(J{sum_row}、参考)')
+    ws.cell(row=r_excel_zeinuki, column=4, value=f'=J{sum_row}')
+    ws.cell(row=r_invoice_diff, column=2, value='⑧ インボイス端数差(⑦ − ⑥、立替金等で発生)')
+    ws.cell(row=r_invoice_diff, column=4, value=f'=D{r_excel_zeinuki}-D{r_zeinuki_calc}')
+    ws.cell(row=r_note, column=2, value='※ ⑤=0 → 抽出正確 / ⑤≠0 → PDF読取エラー / ⑧は数千円までは正常(立替金等の構造差)')
 
-    for r in [r_furikomi, r_sousai, r_zeikomi_total, r_excel_zeikomi, r_sagaku]:
+    for r in [r_furikomi, r_sousai, r_zeikomi_total, r_excel_zeikomi, r_sagaku,
+              r_zeinuki_calc, r_excel_zeinuki, r_invoice_diff]:
         ws.cell(row=r, column=4).number_format = '#,##0;[Red]▲#,##0'
 
-    # ⑤差額 行は他の振込金額照合行と同じサイズ(17)、太字にしない
+    # ⑤差額 行は他の振込金額照合行と同じサイズ、太字にしない
     ws.cell(row=r_sagaku, column=2).font = Font(
         name=ws.cell(row=r_furikomi, column=2).font.name, size=17, bold=False
     )
     ws.cell(row=r_sagaku, column=4).font = Font(
         name=ws.cell(row=r_furikomi, column=4).font.name, size=17, bold=False
     )
+
+    # ⑥-⑧ は参考行なので少し控えめに(グレー寄り)
+    gray_font_name = ws.cell(row=r_furikomi, column=2).font.name
+    for r in [r_zeinuki_calc, r_excel_zeinuki, r_invoice_diff]:
+        ws.cell(row=r, column=2).font = Font(name=gray_font_name, size=14, color='FF666666')
+        ws.cell(row=r, column=4).font = Font(name=gray_font_name, size=14, color='FF666666')
 
 
 def _add_usability_features(ws, data_last_row: int, furikomi_start: int):
