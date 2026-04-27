@@ -68,9 +68,10 @@ def classify_and_aggregate(rows: list[dict]) -> list[dict]:
         if base_name:
             agg["工事名称"].add(base_name)
 
-        # 緩和マッチ(v1.0.96〜): PDF文字認識ゆれ(中ロ分/中囗分/空白混入等)に対応するため
-        # 「生産課中口分」厳密一致から「生産課」を含むだけでマッチに変更
-        is_seisanka = "生産課" in bikou
+        # 緩和マッチ(v1.0.97〜): pdfplumberのPDFテーブル抽出が「生産課中口分」を
+        # 「生産課」(別行に流される) と「中口分」(備考列に残る) に分割するケース
+        # に対応するため、「生産課」または「中口分」のどちらかでマッチ
+        is_seisanka = ("生産課" in bikou) or ("中口分" in bikou)
         is_shaho = "社保" in koushu
 
         if amount >= 0:
