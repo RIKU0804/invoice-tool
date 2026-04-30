@@ -42,6 +42,7 @@ def classify_and_aggregate(rows: list[dict]) -> list[dict]:
         "E": 0,
         "F": 0,
         "G_items": [],
+        "立替金_items": [],
     })
 
     for row in rows:
@@ -67,6 +68,17 @@ def classify_and_aggregate(rows: list[dict]) -> list[dict]:
         base_name = _extract_koji_base(koushu)
         if base_name:
             agg["工事名称"].add(base_name)
+
+        # 立替金は非課税扱い(税抜=税込)。D列の合計には含めるが、
+        # 振込金額照合の税抜逆算では立替金分を控除して比較する(山本さん指示)
+        if "立替金" in koushu:
+            agg["立替金_items"].append(amount)
+            if amount >= 0:
+                agg["D_items"].append(amount)
+            else:
+                agg["G_items"].append(abs(amount))
+            print(f"  [classify] 立替金(非課税): 邸={tei} 金額={amount} 工種={koushu} 備考={bikou!r}")
+            continue
 
         # 緩和マッチ(v1.0.98〜): 「中口応援分」等のバリエーションも生産課扱い
         # pdfplumberが「生産課中口分」を「生産課」と「中口分」に分割するケース対応 +
@@ -100,6 +112,7 @@ def classify_and_aggregate(rows: list[dict]) -> list[dict]:
             "E": agg["E"],
             "F": agg["F"],
             "G_items": agg["G_items"],
+            "立替金_items": agg["立替金_items"],
         })
     return result
 
@@ -286,8 +299,9 @@ def write_to_template(
         ws.cell(row=r, column=12, value=f'=SUMIF({data_range_K},K{r},{data_range_J})')
 
     # 振込金額照合
+    tatekae_total = sum(sum(item.get("立替金_items", [])) for item in aggregated)
     _write_furikomi_verification(
-        ws, furikomi_kingaku, pdf_sousai_zeikomi,
+        ws, furikomi_kingaku, pdf_sousai_zeikomi, tatekae_total,
         start_row=furikomi_start, sum_row=sum_row,
     )
 
@@ -437,16 +451,22 @@ def _rewrite_sum_row(ws, sum_row: int, data_last_row: int):
     ws[f'L{sum_row}'] = f'=IFERROR(J{sum_row}/D{sum_row},"")'
 
 
-def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: int):
-    """振込金額照合欄（税抜⇔税込の二重計算）"""
+def _write_furikomi_verification(ws, furikomi, sousai, tatekae, start_row: int, sum_row: int):
+    """振込金額照合欄（税抜⇔税込の二重計算）
+
+    立替金は非課税(税抜=税込)。PDFの税込合計には立替金税込が含まれるが、
+    1.1で割って税抜にするとき立替金分が誤って圧縮される。
+    立替金分を税込工事代計から除外してから税抜逆算することで差額を0に近づける。
+    """
     r_header = start_row
     r_furikomi = start_row + 1
     r_sousai = start_row + 2
-    r_zeikomi_total = start_row + 3
-    r_zeinuki_calc = start_row + 4
-    r_excel_total = start_row + 5
-    r_sagaku = start_row + 6
-    r_note = start_row + 7
+    r_tatekae = start_row + 3
+    r_zeikomi_total = start_row + 4
+    r_zeinuki_calc = start_row + 5
+    r_excel_total = start_row + 6
+    r_sagaku = start_row + 7
+    r_note = start_row + 8
 
     # 新位置クリア + ヘッダ直上のドリフト残骸も掃除
     # (上書き運用で B34/B35 等にヘッダ重複が出るのを防ぐ)
@@ -462,9 +482,11 @@ def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: 
     ws.cell(row=r_furikomi, column=4, value=furikomi if furikomi is not None else None)
     ws.cell(row=r_sousai, column=2, value='② 税込相殺(PDF・手入力)')
     ws.cell(row=r_sousai, column=4, value=sousai if sousai is not None else None)
-    ws.cell(row=r_zeikomi_total, column=2, value='③ 税込工事代計(① − ②)')
+    ws.cell(row=r_tatekae, column=2, value='③ 立替金合計(非課税・税抜=税込)')
+    ws.cell(row=r_tatekae, column=4, value=tatekae if tatekae else 0)
+    ws.cell(row=r_zeikomi_total, column=2, value='④ 税込工事代計(① − ②)')
     ws.cell(row=r_zeikomi_total, column=4, value=f'=D{r_furikomi}-D{r_sousai}')
-    # ③ 行のboldを解除（テンプレ由来で太字になってるため）
+    # ④ 行のboldを解除（テンプレ由来で太字になってるため）
     b_font = ws.cell(row=r_zeikomi_total, column=2).font
     d_font = ws.cell(row=r_zeikomi_total, column=4).font
     ws.cell(row=r_zeikomi_total, column=2).font = Font(
@@ -473,18 +495,19 @@ def _write_furikomi_verification(ws, furikomi, sousai, start_row: int, sum_row: 
     ws.cell(row=r_zeikomi_total, column=4).font = Font(
         name=d_font.name, size=d_font.size or 17, bold=False, color=d_font.color
     )
-    ws.cell(row=r_zeinuki_calc, column=2, value='④ 税抜逆算(③ ÷ 1.1)')
-    ws.cell(row=r_zeinuki_calc, column=4, value=f'=ROUND(D{r_zeikomi_total}/1.1,0)')
-    ws.cell(row=r_excel_total, column=2, value=f'⑤ Excel税抜合計(J{sum_row})')
+    # 立替金は非課税(税抜=税込)なので 1.1 で割る対象から除外し、立替金分を足し戻す
+    ws.cell(row=r_zeinuki_calc, column=2, value='⑤ 税抜逆算(ROUND((④−③)÷1.1)+③)')
+    ws.cell(row=r_zeinuki_calc, column=4, value=f'=ROUND((D{r_zeikomi_total}-D{r_tatekae})/1.1,0)+D{r_tatekae}')
+    ws.cell(row=r_excel_total, column=2, value=f'⑥ Excel税抜合計(J{sum_row})')
     ws.cell(row=r_excel_total, column=4, value=f'=J{sum_row}')
-    ws.cell(row=r_sagaku, column=2, value='⑥ 差額(⑤ − ④)')
+    ws.cell(row=r_sagaku, column=2, value='⑦ 差額(⑥ − ⑤)')
     ws.cell(row=r_sagaku, column=4, value=f'=D{r_excel_total}-D{r_zeinuki_calc}')
     ws.cell(row=r_note, column=2, value='※ ±数円→インボイス端数差(正常) / 大きな差→PDF読取エラーの可能性')
 
-    for r in [r_furikomi, r_sousai, r_zeikomi_total, r_zeinuki_calc, r_excel_total, r_sagaku]:
+    for r in [r_furikomi, r_sousai, r_tatekae, r_zeikomi_total, r_zeinuki_calc, r_excel_total, r_sagaku]:
         ws.cell(row=r, column=4).number_format = '#,##0;[Red]▲#,##0'
 
-    # ⑥差額 行は他の振込金額照合行と同じサイズ(17)、太字にしない
+    # ⑦差額 行は他の振込金額照合行と同じサイズ(17)、太字にしない
     ws.cell(row=r_sagaku, column=2).font = Font(
         name=ws.cell(row=r_furikomi, column=2).font.name, size=17, bold=False
     )
@@ -511,7 +534,7 @@ def _add_usability_features(ws, data_last_row: int, furikomi_start: int):
     ws.conditional_formatting = ConditionalFormattingList()
 
     # 差額赤/緑 (D{sagaku_row})
-    sagaku_row = furikomi_start + 6  # ⑥ 差額 の行
+    sagaku_row = furikomi_start + 7  # ⑦ 差額 の行（立替金行追加で+1）
     red_fill = PatternFill(start_color='FFCCCC', end_color='FFCCCC', fill_type='solid')
     green_fill = PatternFill(start_color='D5F5E3', end_color='D5F5E3', fill_type='solid')
     ws.conditional_formatting.add(

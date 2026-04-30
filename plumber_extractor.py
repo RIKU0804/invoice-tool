@@ -9,6 +9,33 @@ import pdfplumber
 import re
 from typing import Optional
 
+# カラム名の別名マッピング（柔軟なヘッダー検出用）
+_COLUMN_ALIASES: dict[str, list[str]] = {
+    "事業所":   ["事業所"],
+    "契約NO":   ["契約NO", "契約No", "契約番号", "契約no"],
+    "邸名":     ["邸名", "物件名"],
+    "工種":     ["工種"],
+    "税抜金額": ["税抜金額", "税抜", "金額(税抜)", "金額（税抜）"],
+    "消費税":   ["消費税", "税額"],
+    "税込金額": ["税込金額", "税込", "金額(税込)", "金額（税込）"],
+    "備考":     ["備考", "摘要"],
+}
+
+# ヘッダーなし時のデフォルト位置インデックス（従来の挙動）
+_DEFAULT_COL_MAP: dict[str, int] = {
+    "事業所":   0,
+    "契約NO":   1,
+    "邸名":     2,
+    "工種":     3,
+    "税抜金額": 4,
+    "消費税":   5,
+    "税込金額": 6,
+    "備考":     7,
+}
+
+# ヘッダー判定に必要な最低限のキー列
+_REQUIRED_HEADER_COLS = {"邸名", "工種", "税抜金額", "税込金額"}
+
 
 def extract_payment_date(pdf_path: str) -> Optional[str]:
     """PDFから「支払日」行を検出して "YYYY年MM月DD日" 形式で返す"""
@@ -91,16 +118,56 @@ def extract_totals_and_snippet(pdf_path: str, snippet_out_path: Optional[str] = 
     return result
 
 
+def _detect_column_map(row: list) -> dict[str, int] | None:
+    """
+    ヘッダー行かどうかを判定し、カラムマップを返す。
+    ヘッダーと判断できない場合は None を返す。
+    """
+    def _norm(v: object) -> str:
+        return str(v).strip() if v is not None else ""
+
+    cells = [_norm(c) for c in row]
+
+    col_map: dict[str, int] = {}
+    for canonical, aliases in _COLUMN_ALIASES.items():
+        for i, cell in enumerate(cells):
+            if cell in aliases:
+                col_map[canonical] = i
+                break
+
+    found = set(col_map.keys())
+    if _REQUIRED_HEADER_COLS.issubset(found):
+        return col_map
+    return None
+
+
+def _cell(row: list, col_map: dict[str, int], key: str) -> object:
+    """col_map からセルを取得。インデックス範囲外は None"""
+    idx = col_map.get(key)
+    if idx is None or idx >= len(row):
+        return None
+    return row[idx]
+
+
 def extract_with_pdfplumber(pdf_path: str) -> dict | None:
     """
     pdfplumberで支払通知書から明細を抽出する。
 
     Returns:
-        成功: {"source": "pdfplumber", "rows": [...], "totals": {...}}
+        成功: {
+            "source": "pdfplumber",
+            "rows": [...],
+            "row_count": int,
+            "pdf_koujidai_zeinuki": int|None,  # PDF記載の工事代計（税抜）
+            "col_map_used": "header"|"positional",
+        }
         失敗: None（画像PDF、表認識失敗など）
     """
     try:
-        all_rows = []
+        all_rows: list[dict] = []
+        pdf_koujidai_zeinuki: int | None = None
+        _pdf_koujidai_zeikomi: int | None = None
+        col_map_mode = "positional"
 
         with pdfplumber.open(pdf_path) as pdf:
             any_text_page = False
@@ -111,12 +178,43 @@ def extract_with_pdfplumber(pdf_path: str) -> dict | None:
                     continue
                 any_text_page = True
 
+                # ページテキストから工事代計を抽出
+                # 「＜工事代 計＞ 税抜 消費税 税込」の形式
+                m_koujidai = re.search(
+                    r'＜工事代\s*計＞\s*([\d,]+)\s+([\d,]+)\s+([\d,]+)', text
+                )
+                if m_koujidai and pdf_koujidai_zeinuki is None:
+                    pdf_koujidai_zeinuki = int(m_koujidai.group(1).replace(",", ""))
+                    _pdf_koujidai_zeikomi = int(m_koujidai.group(3).replace(",", ""))
+
                 tables = page.extract_tables()
                 for table in tables:
-                    for row in table:
-                        if not row or len(row) < 8:
+                    if not table:
+                        continue
+
+                    # ヘッダー行の検出
+                    active_col_map: dict[str, int] = _DEFAULT_COL_MAP
+                    start_idx = 0
+                    detected = _detect_column_map(table[0])
+                    if detected is not None:
+                        active_col_map = detected
+                        col_map_mode = "header"
+                        start_idx = 1  # ヘッダー行自体はスキップ
+
+                    for row in table[start_idx:]:
+                        if not row:
                             continue
-                        parsed = _parse_row(row)
+
+                        # 列数チェック（足りなくても処理続行、警告のみ）
+                        max_idx = max(active_col_map.values())
+                        if len(row) <= max_idx:
+                            print(
+                                f"  [pdfplumber] 列数不足 (期待>={max_idx+1}, 実際={len(row)})"
+                                f" row={row!r} → スキップ"
+                            )
+                            continue
+
+                        parsed = _parse_row_mapped(row, active_col_map)
                         if parsed:
                             all_rows.append(parsed)
 
@@ -128,10 +226,73 @@ def extract_with_pdfplumber(pdf_path: str) -> dict | None:
             print("  [pdfplumber] 明細行を検出できず")
             return None
 
+        # 邸名キャリーフォワード
+        # PDFが邸名を最初の行にしか書かない場合、pdfplumberは後続行の邸名を空白で読む。
+        # 工種があり集計行でない空邸名行には直前の邸名を引き継ぐ。
+        last_valid_tei = ""
+        carry_count = 0
+        for row in all_rows:
+            tei = row["邸名"]
+            if tei:
+                last_valid_tei = tei
+            elif last_valid_tei and row["工種"] and not row["工種"].startswith("＜"):
+                row["邸名"] = last_valid_tei
+                carry_count += 1
+        if carry_count:
+            print(f"  [pdfplumber] 邸名キャリーフォワード: {carry_count}行 補完")
+
+        # 照合チェック
+        # 集計行(邸名='', '合計', '消費税 対象外' 等)は除外 — classify_and_aggregate と同じ条件
+        # PDFは「税込合計 / 1.1」で税抜を逆算するため税抜での照合は誤差が出る。
+        # 税込で照合することで計算方式の違いに左右されない正確な照合ができる。
+        if _pdf_koujidai_zeikomi is not None:
+            meisai = [
+                r for r in all_rows
+                if r["邸名"]
+                and r["邸名"] not in ("計", "合計")
+                and "消費税" not in r["邸名"]
+                and "対象外" not in r["邸名"]
+            ]
+            extracted_zeikomi = sum(r["税込金額"] for r in meisai)
+            diff_zeikomi = extracted_zeikomi - _pdf_koujidai_zeikomi
+            extracted_zeinuki = sum(r["税抜金額"] for r in meisai)
+            if abs(diff_zeikomi) > 10:
+                print(
+                    f"  [pdfplumber] [WARNING] 照合差異(税込): 抽出={extracted_zeikomi:,} / "
+                    f"PDF={_pdf_koujidai_zeikomi:,} / 差={diff_zeikomi:+,}円 "
+                    f"→ フォーマット変化の可能性"
+                )
+            else:
+                print(
+                    f"  [pdfplumber] [OK] 照合(税込): 差={diff_zeikomi:+,}円 "
+                    f"(抽出税込={extracted_zeikomi:,} / PDF税込={_pdf_koujidai_zeikomi:,})"
+                )
+        elif pdf_koujidai_zeinuki is not None:
+            meisai = [
+                r for r in all_rows
+                if r["邸名"]
+                and r["邸名"] not in ("計", "合計")
+                and "消費税" not in r["邸名"]
+                and "対象外" not in r["邸名"]
+            ]
+            extracted_zeinuki = sum(r["税抜金額"] for r in meisai)
+            diff = extracted_zeinuki - pdf_koujidai_zeinuki
+            if abs(diff) > 10:
+                print(
+                    f"  [pdfplumber] [WARNING] 照合差異(税抜): 抽出={extracted_zeinuki:,} / "
+                    f"PDF={pdf_koujidai_zeinuki:,} / 差={diff:+,}円"
+                )
+            else:
+                print(
+                    f"  [pdfplumber] [OK] 照合(税抜): 差={diff:+,}円"
+                )
+
         return {
             "source": "pdfplumber",
             "rows": all_rows,
             "row_count": len(all_rows),
+            "pdf_koujidai_zeinuki": pdf_koujidai_zeinuki,
+            "col_map_used": col_map_mode,
         }
 
     except Exception as e:
@@ -139,37 +300,43 @@ def extract_with_pdfplumber(pdf_path: str) -> dict | None:
         return None
 
 
-def _parse_row(row: list) -> dict | None:
+def _parse_row_mapped(row: list, col_map: dict[str, int]) -> dict | None:
     """
-    1行のデータを構造化する。
-    期待形式: [事業所, 契約NO, 邸名, 工種, 税抜, 消費税, 税込, 備考]
+    カラムマップを使って1行のデータを構造化する。
+    col_map は _DEFAULT_COL_MAP（位置ベース）またはヘッダー検出結果のどちらでも可。
     """
-    try:
-        jigyosho, keiyaku_no, tei_mei, koushu, zeinuki, shohizei, zeikomi, bikou = row[:8]
+    def _s(v: object) -> str:
+        return str(v).strip() if v is not None else ""
 
-        zeinuki_val = _parse_amount(zeinuki)
+    try:
+        tei_mei = _s(_cell(row, col_map, "邸名"))
+        zeinuki_raw = _cell(row, col_map, "税抜金額")
+        zeinuki_val = _parse_amount(zeinuki_raw)
+
         if zeinuki_val is None:
             return None
 
-        def _s(v):
-            return str(v).strip() if v is not None else ""
-
         return {
-            "事業所": _s(jigyosho),
-            "契約NO": _s(keiyaku_no),
-            "邸名": _s(tei_mei),
-            "工種": _s(koushu),
+            "事業所":   _s(_cell(row, col_map, "事業所")),
+            "契約NO":   _s(_cell(row, col_map, "契約NO")),
+            "邸名":     tei_mei,
+            "工種":     _s(_cell(row, col_map, "工種")),
             "税抜金額": zeinuki_val,
-            "消費税": _parse_amount(shohizei) or 0,
-            "税込金額": _parse_amount(zeikomi) or 0,
-            "備考": _s(bikou),
+            "消費税":   _parse_amount(_cell(row, col_map, "消費税")) or 0,
+            "税込金額": _parse_amount(_cell(row, col_map, "税込金額")) or 0,
+            "備考":     _s(_cell(row, col_map, "備考")),
         }
     except Exception as e:
         print(f"  [pdfplumber] row parse failed: {type(e).__name__}: {e} row={row!r}")
         return None
 
 
-def _parse_amount(s) -> int | None:
+# 後方互換のため残す（gui.py 等から直接呼んでいる場合に備えて）
+def _parse_row(row: list) -> dict | None:
+    return _parse_row_mapped(row, _DEFAULT_COL_MAP)
+
+
+def _parse_amount(s: object) -> int | None:
     """金額文字列を整数に変換（▲や−を負号として扱う）"""
     if s is None:
         return None
@@ -189,7 +356,9 @@ if __name__ == "__main__":
     pdf = sys.argv[1] if len(sys.argv) > 1 else "input/支払通知書.pdf"
     result = extract_with_pdfplumber(pdf)
     if result:
-        print(f"抽出成功: {result['row_count']}行")
+        print(f"抽出成功: {result['row_count']}行 (カラムマップ: {result['col_map_used']})")
+        if result["pdf_koujidai_zeinuki"] is not None:
+            print(f"PDF工事代計(税抜): {result['pdf_koujidai_zeinuki']:,}円")
         for row in result['rows'][:3]:
             print(row)
     else:
