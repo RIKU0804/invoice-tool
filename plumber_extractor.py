@@ -85,12 +85,18 @@ def extract_totals_and_snippet(pdf_path: str, snippet_out_path: Optional[str] = 
             if all_goukei:
                 result["furikomi"] = int(all_goukei[-1][2].replace(",", ""))
 
+            # 相殺計の形式は 2 通りある:
+            #   3列形式: ＜相殺 計＞ -15,000 0 -15,000  (税抜 消費税 税込)
+            #   2列形式: ＜相殺 計＞ -718,450 -718,450 (税抜=税込、消費税列省略=非課税)
+            # 最後の数字を税込として採用する
             m_sousai = re.search(
-                r'＜相殺\s*計＞\s*([▲▽\-−]?[\d,]+)\s+([▲▽\-−]?[\d,]*)\s*([▲▽\-−]?[\d,]+)',
+                r'＜相殺\s*計＞\s*([▲▽\-−]?[\d,]+)(?:\s+([▲▽\-−]?[\d,]+))?(?:\s+([▲▽\-−]?[\d,]+))?',
                 text,
             )
             if m_sousai:
-                result["sousai"] = _to_int_amount(m_sousai.group(3))
+                nums = [g for g in m_sousai.groups() if g]
+                if nums:
+                    result["sousai"] = _to_int_amount(nums[-1])
 
             if snippet_out_path:
                 words = target_page.extract_words()
