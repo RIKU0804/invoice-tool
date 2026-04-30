@@ -553,9 +553,19 @@ def _add_usability_features(ws, data_last_row: int, furikomi_start: int):
     # 班長名による配置と色分け
     _add_hancho_styling(ws, k_range)
 
-    # L列(粗利率)右揃え統一
+    # L列(粗利率)/J列(粗利)はマイナスもしっかり表示する書式に統一
+    # テンプレ由来の書式が負を隠しているケースに対応
+    profit_rate_fmt = '0.0%;[Red]▲0.0%'
+    profit_amount_fmt = '#,##0;[Red]▲#,##0'
     for r in range(5, data_last_row + 1):
         ws[f'L{r}'].alignment = Alignment(horizontal='right', vertical='center')
+        ws[f'L{r}'].number_format = profit_rate_fmt
+        ws[f'J{r}'].number_format = profit_amount_fmt
+    # 合計行(粗利・粗利率)も同じ書式
+    sum_row_local = data_last_row + 1
+    ws[f'L{sum_row_local}'].number_format = profit_rate_fmt
+    ws[f'L{sum_row_local}'].alignment = Alignment(horizontal='right', vertical='center')
+    ws[f'J{sum_row_local}'].number_format = profit_amount_fmt
 
     # 担当邸数カウント(N3:O9) - 固定位置（挿入された行に影響されない想定）
     ws['N3'] = '【担当邸数】'
