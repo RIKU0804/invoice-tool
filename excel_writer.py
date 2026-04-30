@@ -466,7 +466,8 @@ def _write_furikomi_verification(ws, furikomi, sousai, tatekae, start_row: int, 
     r_zeinuki_calc = start_row + 5
     r_excel_total = start_row + 6
     r_sagaku = start_row + 7
-    r_note = start_row + 8
+    # ⑦差額 と ※注釈 の間に空行を1行入れて行ピッチを揃える
+    r_note = start_row + 9
 
     # 新位置クリア + ヘッダ直上のドリフト残骸も掃除
     # (上書き運用で B34/B35 等にヘッダ重複が出るのを防ぐ)
